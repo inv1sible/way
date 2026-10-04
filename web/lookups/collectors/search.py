@@ -3,10 +3,11 @@
 from django.conf import settings
 
 
-async def searx(client, query, limit=10):
+async def searx(client, query, limit=10, pageno=1):
     response = await client.get(
         f"{settings.OSINT_SEARXNG_URL}/search",
-        params={"q": query, "format": "json", "language": "de"},
+        params={"q": query, "format": "json", "language": "de", "pageno": pageno},
+        timeout=30,
     )
     response.raise_for_status()
     return [

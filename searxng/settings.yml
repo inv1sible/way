@@ -14,3 +14,21 @@ search:
   formats:
     - html
     - json
+
+# Für Rufnummern-Recherche möglichst viele unabhängige Websuchen aktivieren;
+# einzelne Engines werden von den Anbietern zeitweise gesperrt.
+engines:
+  - name: google
+    disabled: false
+  - name: bing
+    disabled: false
+  - name: startpage
+    disabled: false
+  - name: mojeek
+    disabled: false
+  - name: qwant
+    disabled: false
+  - name: yahoo
+    disabled: false
+  - name: presearch
+    disabled: false

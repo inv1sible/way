@@ -20,6 +20,19 @@
   <article class="card report">{{ lookup.report_md|markdown }}</article>
 {% endif %}
 
+{% with hits=lookup.sources|fundstellen %}{% if hits %}
+  <h2>Fundstellen im Web ({{ hits|length }})</h2>
+  <ul class="hits">
+  {% for hit in hits %}
+    <li>
+      <a href="{{ hit.url }}" target="_blank" rel="noopener noreferrer nofollow">{{ hit.titel|default:hit.url }}</a>
+      <span class="muted hit-url">{{ hit.url|truncatechars:90 }}</span>
+      {% if hit.auszug %}<p>{{ hit.auszug }}</p>{% endif %}
+    </li>
+  {% endfor %}
+  </ul>
+{% endif %}{% endwith %}
+
 {% if lookup.sources %}
   <h2>Rohdaten</h2>
   {% for s in lookup.sources %}

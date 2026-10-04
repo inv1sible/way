@@ -29,6 +29,9 @@
   .appendix { page-break-before: always; }
   .source { margin-bottom: 4mm; page-break-inside: auto; }
   .source h3 { font-size: 10pt; margin: 0 0 1mm; page-break-after: avoid; }
+  .hits li { margin-bottom: 2mm; }
+  .hits .url { color: #2557d6; font-size: 8pt; word-break: break-all; }
+  .hits .snippet { color: #5d6673; font-size: 8.5pt; }
   pre { font-family: "DejaVu Sans Mono", monospace; font-size: 7pt; white-space: pre-wrap; word-break: break-all;
         background: #f6f7f9; border: 0.5pt solid #e3e6ea; padding: 2mm; margin: 0; }
 </style>
@@ -55,6 +58,16 @@
     <p class="note">Der Bericht wurde automatisch von einem Sprachmodell aus den Rohdaten im Anhang erstellt
       und kann Fehler enthalten. Maßgeblich sind die Rohdaten der jeweiligen Quellen.</p>
   {% endif %}
+
+  {% with hits=lookup.sources|fundstellen %}{% if hits %}
+    <h2>Fundstellen im Web ({{ hits|length }})</h2>
+    <ol class="hits">
+      {% for hit in hits %}
+        <li><strong>{{ hit.titel|default:"(ohne Titel)" }}</strong><br><span class="url">{{ hit.url }}</span>
+          {% if hit.auszug %}<br><span class="snippet">{{ hit.auszug }}</span>{% endif %}</li>
+      {% endfor %}
+    </ol>
+  {% endif %}{% endwith %}
 
   {% if lookup.sources %}
     <h2>Abgefragte Quellen</h2>

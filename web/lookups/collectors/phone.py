@@ -1,6 +1,7 @@
 """Rufnummern: lokale Auswertung mit libphonenumber und Websuche nach Erfahrungsberichten."""
 
 import asyncio
+import html
 import re
 
 import phonenumbers
@@ -95,48 +96,101 @@ def mentions_number(hit, variants):
     return any(v in text for v in variants)
 
 
-def _national_and_variants(e164):
+def _formats(e164):
+    """Schreibweisen für die Suche: Suchmaschinen finden "069 90009123" oft, die reinen Ziffern
+    "06990009123" dagegen kaum."""
     number = phonenumbers.parse(e164)
-    national = re.sub(r"\D", "", phonenumbers.format_number(number, PhoneNumberFormat.NATIONAL))
-    return national, {national, e164.lstrip("+")}
+    national = phonenumbers.format_number(number, PhoneNumberFormat.NATIONAL)
+    international = phonenumbers.format_number(number, PhoneNumberFormat.INTERNATIONAL)
+    digits = re.sub(r"\D", "", national)
+    return national, international, digits, {digits, e164.lstrip("+")}
 
 
-# Portale mit Nutzerbewertungen zu Anrufern; gesucht wird über SearXNG, nicht per Scraping.
-SPAM_PORTALS = ("tellows.de", "cleverdialer.de", "wemgehoert.de", "dasoertliche.de")
-
-
-async def spam_portals(client, e164):
-    national, variants = _national_and_variants(e164)
-    batches = await asyncio.gather(
-        *(search.searx(client, f"site:{domain} {national}", limit=5) for domain in SPAM_PORTALS),
-        return_exceptions=True,
-    )
-    result = {}
-    for domain, batch in zip(SPAM_PORTALS, batches):
-        if isinstance(batch, Exception):
-            result[domain] = {"fehler": f"{type(batch).__name__}: {batch}"}
-        else:
-            result[domain] = [hit for hit in batch if mentions_number(hit, variants)] or "kein Treffer"
-    return result
+async def _search_all(client, queries, variants, limit):
+    """Fragt nacheinander ab (parallele Anfragen führen zu Sperren bei den Suchmaschinen) und behält
+    nur Treffer, in denen die Nummer wirklich vorkommt."""
+    seen, hits, errors = set(), [], []
+    for query, page in queries:
+        try:
+            batch = await search.searx(client, query, limit=20, pageno=page)
+        except Exception as exc:
+            errors.append(f"{query}: {type(exc).__name__}")
+            continue
+        for hit in batch:
+            if hit["url"] not in seen and mentions_number(hit, variants):
+                seen.add(hit["url"])
+                hits.append(hit)
+    if errors and len(errors) == len(queries):
+        raise RuntimeError("Websuche nicht erreichbar: " + "; ".join(errors))
+    return hits[:limit]
 
 
 async def web_search(client, e164):
-    national, variants = _national_and_variants(e164)
-    batches = await asyncio.gather(*(search.searx(client, f'"{q}"') for q in (national, e164)))
-    seen, hits = set(), []
-    for hit in (h for batch in batches for h in batch):
-        if hit["url"] not in seen and mentions_number(hit, variants):
-            seen.add(hit["url"])
-            hits.append(hit)
-    return hits[:15]
+    national, international, digits, variants = _formats(e164)
+    queries = [(f'"{national}"', 1), (f'"{national}"', 2), (f'"{international}"', 1), (digits, 1)]
+    return await _search_all(client, queries, variants, limit=30)
+
+
+# Portale mit Nutzerbewertungen und Rückwärtssuche; gesucht wird über SearXNG, nicht per Scraping.
+SPAM_PORTALS = (
+    "tellows.de", "cleverdialer.de", "wemgehoert.de", "werruft.info", "anruferauskunft.de",
+    "dasoertliche.de", "dastelefonbuch.de",
+)
+
+
+async def spam_portals(client, e164):
+    national, _, digits, variants = _formats(e164)
+    sites = " OR ".join(f"site:{domain}" for domain in SPAM_PORTALS)
+    hits = await _search_all(client, [(f'"{national}" ({sites})', 1), (f"{digits} ({sites})", 1)], variants, limit=20)
+    result = {domain: [] for domain in SPAM_PORTALS}
+    for hit in hits:
+        domain = next((d for d in SPAM_PORTALS if d in hit["url"]), None)
+        if domain:
+            result[domain].append(hit)
+    return {domain: found or "kein Treffer" for domain, found in result.items()}
+
+
+BROWSER_UA = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0 Safari/537.36"
+
+
+def parse_clever_dialer(page):
+    title = re.search(r"<title>(.*?)</title>", page, re.S)
+    text = html.unescape(re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", re.sub(r"<(script|style)[^>]*>.*?</\1>", " ", page, flags=re.S))))
+    place = re.search(r"Telefonnummer aus ([^<|]+)", html.unescape(title.group(1)) if title else "")
+    rating = re.search(r"(\d(?:[.,]\d)?) von 5 Sternen\s*•?\s*(\d+) Bewertung", text)
+    calls = re.search(r"(?<!Blockierte )Anrufe letzte 30 Tage:\s*(\d+)", text)
+    blocked = re.search(r"Blockierte Anrufe letzte 30 Tage:\s*(\d+)", text)
+    return {
+        "ort": place.group(1).strip() if place else None,
+        "sterne": float(rating.group(1).replace(",", ".")) if rating else None,
+        "bewertungen": int(rating.group(2)) if rating else None,
+        "anrufe_letzte_30_tage": int(calls.group(1)) if calls else None,
+        "blockiert_letzte_30_tage": int(blocked.group(1)) if blocked else None,
+    }
+
+
+async def clever_dialer(client, e164):
+    number = phonenumbers.parse(e164)
+    if number.country_code != 49:
+        return {"hinweis": "Clever Dialer wird nur für deutsche Rufnummern abgefragt."}
+    url = f"https://www.cleverdialer.de/telefonnummer/0{phonenumbers.national_significant_number(number)}"
+    response = await client.get(url, headers={"User-Agent": BROWSER_UA}, follow_redirects=True)
+    response.raise_for_status()
+    return {"url": url, **parse_clever_dialer(response.text)}
 
 
 async def collect(client, e164):
-    return list(
-        await asyncio.gather(
-            run_source("Rufnummernanalyse (libphonenumber)", analyze, e164),
-            run_source("Bundesnetzagentur-Maßnahmenliste", bnetza.check, client, e164),
-            run_source("Spam-Portale (Websuche)", spam_portals, client, e164),
-            run_source("Websuche (SearXNG)", web_search, client, e164),
-        )
+    async def searches():
+        # Websuchen nacheinander, um die Suchmaschinen nicht mit parallelen Anfragen zu reizen
+        return [
+            await run_source("Websuche (SearXNG)", web_search, client, e164),
+            await run_source("Spam-Portale und Telefonbücher (Websuche)", spam_portals, client, e164),
+        ]
+
+    *direct, searched = await asyncio.gather(
+        run_source("Rufnummernanalyse (libphonenumber)", analyze, e164),
+        run_source("Bundesnetzagentur-Maßnahmenliste", bnetza.check, client, e164),
+        run_source("Clever Dialer", clever_dialer, client, e164),
+        searches(),
     )
+    return [*direct, *searched]

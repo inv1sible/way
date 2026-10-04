@@ -34,6 +34,12 @@ Netzbetreiber kann durch Rufnummernportierung abweichen. Bei Verdacht auf Missbr
 Beschwerdemöglichkeit bei der Bundesnetzagentur hinweisen.
 - Ein Treffer in der Maßnahmenliste der Bundesnetzagentur ist ein starker, amtlicher Hinweis auf \
 Missbrauch und gehört ins Kurzfazit. Kein Treffer bedeutet nicht, dass die Nummer unbedenklich ist.
+- Websuche-Treffer, in denen die Nummer zusammen mit einem Namen steht (Impressum, Kontaktseite, \
+Stellenanzeige, Gemeindebrief usw.), sind der wichtigste Hinweis auf den Anschlussinhaber: Nenne diese \
+Organisationen oder Personen im Kurzfazit mit Quelle. Nummern mit Durchwahl gehören oft zu einer \
+Telefonanlage derselben Organisation.
+- Clever Dialer: Sterne und Anzahl der Bewertungen, Anrufe und Blockierungen der letzten 30 Tage zeigen, \
+wie auffällig die Nummer bei anderen Nutzern ist; 0 Bewertungen heißt nur, dass niemand sie gemeldet hat.
 - Bewertungen und Kommentare auf Spam-Portalen (tellows, Clever Dialer usw.) sind Nutzermeinungen; \
 viele übereinstimmende Meldungen wiegen schwerer als einzelne.
 - Reputationsdienste (VirusTotal, OTX, abuse.ch, CrowdSec, AbuseIPDB, GreyNoise): Einzelne Treffer \

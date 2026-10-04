@@ -237,7 +237,7 @@ class BnetzaTests(SimpleTestCase):
 
 class SpamPortalTests(SimpleTestCase):
     def test_only_hits_with_number_are_kept(self):
-        async def fake_searx(client, query, limit=10):
+        async def fake_searx(client, query, limit=10, pageno=1):
             return [
                 {"titel": "0211 1234567 - Bewertung", "url": "https://www.tellows.de/num/02111234567", "auszug": "Score 8"},
                 {"titel": "Irgendwas", "url": "https://www.tellows.de/x", "auszug": "andere Nummer"},
@@ -245,6 +245,51 @@ class SpamPortalTests(SimpleTestCase):
         with mock.patch.object(phone.search, "searx", fake_searx):
             result = asyncio.run(phone.spam_portals(None, "+492111234567"))
         self.assertEqual(len(result["tellows.de"]), 1)
+        self.assertEqual(result["cleverdialer.de"], "kein Treffer")
+
+
+class WebSearchTests(SimpleTestCase):
+    def test_formatted_queries_sequential_and_filtered(self):
+        queries = []
+
+        async def fake_searx(client, query, limit=10, pageno=1):
+            queries.append((query, pageno))
+            return [
+                {"titel": "Kita Beispielstraße", "url": "https://dekanat.example/kita", "auszug": "Tel. 069 90009123"},
+                {"titel": "Werbung", "url": "https://spam.example/", "auszug": "nichts"},
+            ]
+        with mock.patch.object(phone.search, "searx", fake_searx):
+            hits = asyncio.run(phone.web_search(None, "+496990009123"))
+        self.assertEqual([h["url"] for h in hits], ["https://dekanat.example/kita"])
+        self.assertIn(('"069 90009123"', 1), queries)
+        self.assertIn(('"069 90009123"', 2), queries)
+        self.assertIn(('"+49 69 90009123"', 1), queries)
+
+    def test_all_queries_failing_is_an_error(self):
+        async def broken(client, query, limit=10, pageno=1):
+            raise RuntimeError("down")
+        with mock.patch.object(phone.search, "searx", broken), self.assertRaises(RuntimeError):
+            asyncio.run(phone.web_search(None, "+496990009123"))
+
+    def test_parse_clever_dialer(self):
+        page = ("<title>06990009123 &#9989; Infos zur Telefonnummer aus Frankfurt am Main</title><body>"
+                "<div>3,5 von 5 Sternen &bull; 12 Bewertungen</div><p>Anrufe letzte 30 Tage: 40</p>"
+                "<p>Blockierte Anrufe letzte 30 Tage: 7</p></body>")
+        self.assertEqual(phone.parse_clever_dialer(page), {
+            "ort": "Frankfurt am Main", "sterne": 3.5, "bewertungen": 12,
+            "anrufe_letzte_30_tage": 40, "blockiert_letzte_30_tage": 7,
+        })
+
+    def test_fundstellen_only_from_search_sources(self):
+        from .templatetags.report_tags import fundstellen
+        sources = [
+            {"source": "Websuche (SearXNG)", "ok": True, "data": [{"titel": "A", "url": "https://a.example/"}]},
+            {"source": "Spam-Portale und Telefonbücher (Websuche)", "ok": True,
+             "data": {"tellows.de": [{"titel": "B", "url": "https://www.tellows.de/num/1"}], "werruft.info": "kein Treffer"}},
+            {"source": "abuse.ch URLhaus", "ok": True, "data": {"urls": [{"url": "http://malware.example/x.exe"}]}},
+            {"source": "Websuche (SearXNG)", "ok": True, "data": [{"titel": "js", "url": "javascript:alert(1)"}]},
+        ]
+        self.assertEqual([h["url"] for h in fundstellen(sources)], ["https://a.example/", "https://www.tellows.de/num/1"])
 
 
 class ThreatIntelTests(SimpleTestCase):
