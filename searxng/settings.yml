@@ -1,7 +1,7 @@
 use_default_settings: true
 
 general:
-  instance_name: "osint-search"
+  instance_name: "way-search"
 
 server:
   # wird durch die Umgebungsvariable SEARXNG_SECRET überschrieben

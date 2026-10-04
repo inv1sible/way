@@ -68,3 +68,54 @@ header nav form { display: inline; }
 .qr { background: #fff; display: inline-block; padding: 8px; border-radius: 6px; margin: 8px 0; }
 .qr svg { display: block; width: 220px; height: 220px; }
 .copy-row { display: flex; gap: 8px; }
+
+/* Mobil: Tabellen werden zu Kacheln */
+@media (max-width: 640px) {
+  .table-wrap { overflow: visible; }
+  table.tiles, table.tiles tbody, table.tiles-generic, table.tiles-generic tbody { display: block; background: none; }
+  table.tiles thead, table.tiles-generic thead { display: none; }
+  table.tiles td, table.tiles-generic td { border: 0; padding: 0; white-space: normal; }
+
+  table.tiles tr {
+    position: relative;
+    display: grid;
+    grid-template-columns: 1fr auto;
+    grid-template-areas: "query risk" "kind time" "status user";
+    gap: 4px 12px;
+    margin-bottom: 10px;
+    padding: 12px 14px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-left: 4px solid var(--neutral);
+    border-radius: 8px;
+  }
+  table.tiles tr.tile-risk-niedrig { border-left-color: var(--low); }
+  table.tiles tr.tile-risk-mittel { border-left-color: var(--mid); }
+  table.tiles tr.tile-risk-hoch { border-left-color: var(--high); }
+  .t-query { grid-area: query; font-weight: 600; font-size: 1.05rem; word-break: break-all; }
+  .t-query a { color: var(--text); text-decoration: none; }
+  .t-query a::after { content: ""; position: absolute; inset: 0; }  /* ganze Kachel antippbar */
+  .t-risk { grid-area: risk; justify-self: end; }
+  .t-kind { grid-area: kind; color: var(--muted); font-size: .9rem; }
+  .t-time { grid-area: time; justify-self: end; font-size: .9rem; }
+  .t-status { grid-area: status; display: flex; align-items: center; gap: 6px; font-size: .9rem; }
+  .t-user { grid-area: user; justify-self: end; font-size: .85rem; word-break: break-all; }
+
+  table.tiles-generic tr {
+    display: grid;
+    gap: 4px;
+    margin-bottom: 10px;
+    padding: 12px 14px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+  }
+  table.tiles-generic td[data-label]::before { content: attr(data-label) ": "; color: var(--muted); font-size: .85rem; }
+  table.tiles-generic td:first-child { font-weight: 600; word-break: break-all; }
+  table.tiles-generic td:first-child::before { content: none; }
+  table.tiles-generic td:empty { display: none; }
+
+  header { flex-wrap: wrap; gap: 8px; }
+  header nav .muted { display: none; }
+  .copy-row { flex-direction: column; }
+}

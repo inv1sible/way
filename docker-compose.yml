@@ -1,6 +1,6 @@
 x-app: &app
   build: ./web
-  image: osint-agent-web
+  image: way-web
   env_file: .env
   environment:
     POSTGRES_HOST: db

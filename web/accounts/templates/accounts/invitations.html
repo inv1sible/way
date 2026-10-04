@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Einladungen · OSINT-Agent{% endblock %}
+{% block title %}Einladungen · Who Are You{% endblock %}
 {% block content %}
 <h1>Einladungen</h1>
 
@@ -33,15 +33,15 @@
 <h2>Bisherige Einladungen</h2>
 {% if invitations %}
 <div class="table-wrap">
-<table>
+<table class="tiles-generic">
   <thead><tr><th>E-Mail</th><th>Status</th><th>Gültig bis</th><th>Erstellt von</th><th></th></tr></thead>
   <tbody>
   {% for i in invitations %}
     <tr>
-      <td>{{ i.email }}</td>
-      <td>{{ i.status }}{% if i.user and not i.user.is_active %} (Mail unbestätigt){% endif %}</td>
-      <td class="muted">{{ i.expires_at|date:"d.m.Y H:i" }}</td>
-      <td class="muted">{{ i.created_by.email|default:i.created_by.username }}</td>
+      <td data-label="E-Mail">{{ i.email }}</td>
+      <td data-label="Status">{{ i.status }}{% if i.user and not i.user.is_active %} (Mail unbestätigt){% endif %}</td>
+      <td data-label="Gültig bis" class="muted">{{ i.expires_at|date:"d.m.Y H:i" }}</td>
+      <td data-label="Erstellt von" class="muted">{% if i.created_by %}{{ i.created_by.email|default:i.created_by.username }}{% else %}–{% endif %}</td>
       <td>{% if i.status == "offen" %}
         <form method="post" action="{% url 'accounts:revoke' i.pk %}">{% csrf_token %}<button class="link">Widerrufen</button></form>
       {% endif %}</td>

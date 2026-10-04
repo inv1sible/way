@@ -1,7 +1,7 @@
 {% autoescape off %}
 Hallo,
 
-{{ inviter.email|default:inviter.username }} hat dich zum OSINT-Agent eingeladen.
+{{ inviter.email|default:inviter.username }} hat dich zu Who Are You eingeladen.
 
 Über diesen Link legst du dein Konto an:
 {{ url }}

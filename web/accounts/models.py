@@ -54,6 +54,7 @@ class Invitation(models.Model):
     created_at = models.DateTimeField("erstellt", auto_now_add=True)
     expires_at = models.DateTimeField("gültig bis")
     used_at = models.DateTimeField("eingelöst", null=True, blank=True)
+    confirmed_at = models.DateTimeField("E-Mail bestätigt", null=True, blank=True)
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL,
         related_name="+", verbose_name="registrierter Nutzer",

@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% load report_tags %}
-{% block title %}{{ lookup.query }} · OSINT-Agent{% endblock %}
+{% block title %}{{ lookup.query }} · Who Are You{% endblock %}
 {% block head %}{% if lookup.is_running %}<meta http-equiv="refresh" content="3">{% endif %}{% endblock %}
 {% block content %}
 <p><a href="{% url 'lookups:index' %}">← Neue Abfrage</a></p>

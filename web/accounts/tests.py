@@ -119,6 +119,15 @@ class RegistrationTests(TestCase):
         self.assertContains(self._register(), "nicht freigegeben")
         self.assertFalse(User.objects.exists())
 
+    def test_confirmation_link_works_only_once(self):
+        # Ein Admin sperrt das Konto nach der Bestätigung; der alte Link darf es nicht reaktivieren.
+        self._register()
+        link = link_from(mail.outbox[0])
+        self.client.get(link)
+        User.objects.update(is_active=False)
+        self.assertEqual(self.client.get(link).status_code, 400)
+        self.assertFalse(User.objects.get().is_active)
+
     def test_tampered_confirmation_link(self):
         self._register()
         response = self.client.get(link_from(mail.outbox[0]).rstrip("/") + "x/")
@@ -145,6 +154,13 @@ class LookupVisibilityTests(TestCase):
         self.assertEqual(self.client.get(reverse("lookups:detail", args=[self.lookup.pk])).status_code, 404)
         self.assertEqual(self.client.post(reverse("lookups:rerun", args=[self.lookup.pk])).status_code, 404)
         self.assertNotContains(self.client.get(reverse("lookups:index")), "8.8.8.8")
+
+    def test_staff_index_with_lookup_without_owner(self):
+        Lookup.objects.create(kind="ip", query="1.1.1.1", created_by=None)
+        Invitation.create_for("x@example.org", created_by=None)
+        self.client.force_login(User.objects.create_user("chef", password="x", is_staff=True))
+        self.assertContains(self.client.get(reverse("lookups:index")), "1.1.1.1")
+        self.assertContains(self.client.get(reverse("accounts:invitations")), "x@example.org")
 
     def test_owner_and_staff_see_it(self):
         self.client.force_login(self.anna)

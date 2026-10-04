@@ -4,7 +4,7 @@ import inspect
 
 import httpx
 
-USER_AGENT = "osint-agent/0.1"
+USER_AGENT = "who-are-you/0.1"
 
 
 async def run_source(name, fn, *args):

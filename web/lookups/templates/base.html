@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{% block title %}OSINT-Agent{% endblock %}</title>
+  <title>{% block title %}Who Are You{% endblock %}</title>
   <meta name="theme-color" content="#2557d6">
   <link rel="manifest" href="{% url 'lookups:manifest' %}">
   <link rel="icon" href="{% static 'lookups/icons/icon-192.png' %}">
@@ -14,7 +14,7 @@
 </head>
 <body>
   <header>
-    <a href="{% url 'lookups:index' %}" class="brand">OSINT-Agent</a>
+    <a href="{% url 'lookups:index' %}" class="brand">Who Are You</a>
     {% if user.is_authenticated %}
       <nav>
         {% if user.is_staff %}

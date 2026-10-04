@@ -70,8 +70,8 @@ def rerun(request, pk):
 def manifest(request):
     return JsonResponse(
         {
-            "name": "OSINT-Agent",
-            "short_name": "OSINT",
+            "name": "Who Are You",
+            "short_name": "WAY",
             "description": "Rufnummern, IP-Adressen und Hostnamen analysieren",
             "lang": "de",
             "id": "/",
@@ -100,7 +100,7 @@ def manifest(request):
 SERVICE_WORKER = """
 const OFFLINE = '<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width">'
   + '<title>Offline</title><body style="font-family:system-ui;padding:24px">'
-  + '<h1>Keine Verbindung</h1><p>Der OSINT-Agent ist gerade nicht erreichbar.</p>';
+  + '<h1>Keine Verbindung</h1><p>Who Are You ist gerade nicht erreichbar.</p>';
 
 self.addEventListener("install", () => self.skipWaiting());
 self.addEventListener("activate", (event) => event.waitUntil(self.clients.claim()));

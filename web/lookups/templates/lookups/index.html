@@ -11,16 +11,17 @@
 <h2>Verlauf</h2>
 {% if lookups %}
 <div class="table-wrap">
-<table>
-  <thead><tr><th>Abfrage</th><th>Typ</th><th>Risiko</th><th>Status</th><th>Zeit</th></tr></thead>
+<table class="tiles">
+  <thead><tr><th>Abfrage</th><th>Typ</th><th>Risiko</th><th>Status</th><th>Zeit</th>{% if user.is_staff %}<th>Nutzer</th>{% endif %}</tr></thead>
   <tbody>
   {% for l in lookups %}
-    <tr>
-      <td><a href="{% url 'lookups:detail' l.pk %}">{{ l.query }}</a></td>
-      <td>{{ l.get_kind_display }}</td>
-      <td><span class="risk risk-{{ l.risk|default:'none' }}">{{ l.risk|default:"–" }}</span></td>
-      <td>{{ l.get_status_display }}</td>
-      <td class="muted">{{ l.created_at|date:"d.m.Y H:i" }}</td>
+    <tr class="tile-risk-{{ l.risk|default:'none' }}">
+      <td class="t-query"><a href="{% url 'lookups:detail' l.pk %}">{{ l.query }}</a></td>
+      <td class="t-kind">{{ l.get_kind_display }}</td>
+      <td class="t-risk"><span class="risk risk-{{ l.risk|default:'none' }}">{{ l.risk|default:"–" }}</span></td>
+      <td class="t-status">{% if l.is_running %}<span class="spinner"></span> {% endif %}{{ l.get_status_display }}</td>
+      <td class="t-time muted">{{ l.created_at|date:"d.m.Y H:i" }}</td>
+      {% if user.is_staff %}<td class="t-user muted">{% if l.created_by %}{{ l.created_by.email|default:l.created_by.username }}{% else %}–{% endif %}</td>{% endif %}
     </tr>
   {% endfor %}
   </tbody>

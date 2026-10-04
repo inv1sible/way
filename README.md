@@ -1,4 +1,4 @@
-# OSINT-Agent
+# Who Are You (WAY)
 
 Rufnummer oder IP-Adresse in die Web-UI eingeben und einen KI-Bericht mit Risikoeinschätzung erhalten.
 Die Daten werden ohne KI aus freien Quellen gesammelt, ein lokales LLM über Ollama bewertet sie.

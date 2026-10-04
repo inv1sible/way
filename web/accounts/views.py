@@ -47,7 +47,7 @@ def invitations(request):
         invitation, token = Invitation.create_for(form.cleaned_data["email"], request.user, form.cleaned_data["days"])
         url = request.build_absolute_uri(reverse("accounts:register", args=[token]))
         mailed = form.cleaned_data["send_mail"] and _mail(
-            "Einladung zum OSINT-Agent",
+            "Einladung zu Who Are You",
             "accounts/email/invitation.txt",
             {"url": url, "invitation": invitation, "inviter": request.user},
             invitation.email,
@@ -98,10 +98,10 @@ def register(request, token):
             locked.used_at, locked.user = timezone.now(), user
             locked.save(update_fields=["used_at", "user"])
         confirm_url = request.build_absolute_uri(
-            reverse("accounts:confirm", args=[signing.dumps(user.pk, salt=CONFIRM_SALT)])
+            reverse("accounts:confirm", args=[signing.dumps(locked.pk, salt=CONFIRM_SALT)])
         )
         mailed = _mail(
-            "OSINT-Agent: E-Mail-Adresse bestätigen",
+            "Who Are You: E-Mail-Adresse bestätigen",
             "accounts/email/confirm.txt",
             {"url": confirm_url, "days": settings.EMAIL_CONFIRM_DAYS},
             user.email,
@@ -112,13 +112,26 @@ def register(request, token):
 
 @login_not_required
 def confirm(request, token):
+    """Aktiviert das Konto aus einer Einladung. Der Link wirkt nur einmal, damit ein später von
+    einem Admin gesperrtes Konto sich nicht mit dem alten Link selbst wieder freischalten kann."""
+    invalid = render(request, "accounts/invalid.html", {
+        "title": "Bestätigung fehlgeschlagen",
+        "text": "Der Bestätigungslink ist ungültig, abgelaufen oder wurde bereits verwendet.",
+    }, status=400)
     try:
         pk = signing.loads(token, salt=CONFIRM_SALT, max_age=settings.EMAIL_CONFIRM_DAYS * 24 * 3600)
     except signing.BadSignature:
-        return render(request, "accounts/invalid.html", {
-            "title": "Bestätigung fehlgeschlagen",
-            "text": "Der Bestätigungslink ist ungültig oder abgelaufen. Bitte wende dich an einen Admin.",
-        }, status=400)
-    User.objects.filter(pk=pk, is_active=False).update(is_active=True)
+        return invalid
+    with transaction.atomic():
+        invitation = (
+            Invitation.objects.select_for_update()
+            .filter(pk=pk, confirmed_at__isnull=True, user__isnull=False)
+            .first()
+        )
+        if invitation is None:
+            return invalid
+        invitation.confirmed_at = timezone.now()
+        invitation.save(update_fields=["confirmed_at"])
+        User.objects.filter(pk=invitation.user_id).update(is_active=True)
     messages.success(request, "E-Mail-Adresse bestätigt. Du kannst dich jetzt anmelden.")
     return redirect("login")

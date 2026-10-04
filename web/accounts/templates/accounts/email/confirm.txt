@@ -1,7 +1,7 @@
 {% autoescape off %}
 Hallo,
 
-bitte bestätige deine E-Mail-Adresse für den OSINT-Agent:
+bitte bestätige deine E-Mail-Adresse für Who Are You:
 {{ url }}
 
 Der Link gilt {{ days }} Tage. Wenn du dich nicht registriert hast, ignoriere diese Mail.

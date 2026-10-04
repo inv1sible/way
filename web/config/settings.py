@@ -129,7 +129,7 @@ if env("EMAIL_HOST"):
 else:
     # Ohne SMTP-Zugang landen Mails im Log des Web-Containers.
     EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
-DEFAULT_FROM_EMAIL = env("DEFAULT_FROM_EMAIL", "OSINT-Agent <noreply@localhost>")
+DEFAULT_FROM_EMAIL = env("DEFAULT_FROM_EMAIL", "Who Are You <noreply@localhost>")
 # Cookies nur über HTTPS; für Tests ohne TLS per DJANGO_SECURE_COOKIES=0 abschaltbar.
 SESSION_COOKIE_SECURE = CSRF_COOKIE_SECURE = env("DJANGO_SECURE_COOKIES", "1") == "1"
 
