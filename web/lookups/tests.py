@@ -268,3 +268,46 @@ class PwaTests(TestCase):
     def test_share_requires_login(self):
         response = self.client.get(reverse("lookups:share"), {"text": "8.8.8.8"})
         self.assertEqual(response.status_code, 302)
+
+
+class PdfTests(TestCase):
+    def setUp(self):
+        self.user = get_user_model().objects.create_user("anna", password="x")
+        self.lookup = Lookup.objects.create(
+            kind="phone", query="+4917612345678", created_by=self.user, status=Lookup.Status.DONE, risk="hoch",
+            report_md="## Kurzfazit\nGelistet.\n\n![x](http://192.0.2.1/tracker.png) ![y](file:///etc/passwd)\n<script>x</script>",
+            sources=[{"source": "Bundesnetzagentur-Maßnahmenliste", "ok": True, "data": {"treffer": [{"kategorie": "Spam"}]}},
+                     {"source": "Websuche (SearXNG)", "ok": False, "error": "Timeout"}],
+        )
+
+    def test_owner_gets_pdf_download(self):
+        self.client.force_login(self.user)
+        from . import pdf
+        with mock.patch.object(pdf, "block_external", wraps=pdf.block_external) as blocker:
+            response = self.client.get(reverse("lookups:pdf", args=[self.lookup.pk]))
+        self.assertEqual(response["Content-Type"], "application/pdf")
+        self.assertTrue(response.content.startswith(b"%PDF"))
+        self.assertIn('filename="way-phone-+4917612345678-', response["Content-Disposition"])
+        # Das Markdown-Bild ging an den Blocker statt ans Netz
+        self.assertIn("http://192.0.2.1/tracker.png", [c.args[0] for c in blocker.call_args_list])
+
+    def test_external_resources_are_blocked(self):
+        from . import pdf
+        fetcher = pdf.BlockingFetcher(allowed_protocols=())
+        for url in ("http://192.0.2.1/tracker.png", "file:///etc/passwd", "data:text/plain,x"):
+            with self.assertRaises(ValueError):
+                fetcher.fetch(url)
+        # file:-Links verwirft schon der Markdown-Renderer
+        self.assertNotIn('src="file:', markdown("![y](file:///etc/passwd)"))
+
+    def test_other_users_cannot_download(self):
+        self.client.force_login(get_user_model().objects.create_user("ben", password="x"))
+        self.assertEqual(self.client.get(reverse("lookups:pdf", args=[self.lookup.pk])).status_code, 404)
+
+    def test_running_lookup_redirects(self):
+        Lookup.objects.filter(pk=self.lookup.pk).update(status=Lookup.Status.ANALYZING)
+        self.client.force_login(self.user)
+        self.assertRedirects(
+            self.client.get(reverse("lookups:pdf", args=[self.lookup.pk])),
+            reverse("lookups:detail", args=[self.lookup.pk]), fetch_redirect_response=False,
+        )

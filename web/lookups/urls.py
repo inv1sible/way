@@ -9,6 +9,7 @@ urlpatterns = [
     path("teilen/", views.share, name="share"),
     path("analyse/<int:pk>/", views.detail, name="detail"),
     path("analyse/<int:pk>/erneut/", views.rerun, name="rerun"),
+    path("analyse/<int:pk>/pdf/", views.report_pdf, name="pdf"),
     path("manifest.webmanifest", views.manifest, name="manifest"),
     path("sw.js", views.service_worker, name="service_worker"),
 ]

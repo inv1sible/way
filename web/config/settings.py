@@ -163,6 +163,12 @@ LOGGING = {
     "disable_existing_loggers": False,
     "handlers": {"console": {"class": "logging.StreamHandler"}},
     "root": {"handlers": ["console"], "level": "INFO"},
+    "loggers": {
+        # WeasyPrint protokolliert sonst jeden Layout-Schritt
+        "weasyprint": {"level": "WARNING"},
+        "weasyprint.progress": {"level": "WARNING"},
+        "fontTools": {"level": "WARNING"},
+    },
 }
 
 # OSINT-Quellen und KI

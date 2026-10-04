@@ -31,8 +31,11 @@
 {% endif %}
 
 {% if not lookup.is_running %}
-  <form method="post" action="{% url 'lookups:rerun' lookup.pk %}">{% csrf_token %}
-    <button>Erneut analysieren</button>
-  </form>
+  <div class="actions">
+    <a class="button" href="{% url 'lookups:pdf' lookup.pk %}">Als PDF</a>
+    <form method="post" action="{% url 'lookups:rerun' lookup.pk %}">{% csrf_token %}
+      <button class="secondary">Erneut analysieren</button>
+    </form>
+  </div>
 {% endif %}
 {% endblock %}

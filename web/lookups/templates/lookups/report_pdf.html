@@ -1,0 +1,78 @@
+{% load report_tags %}<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<title>Analysebericht {{ lookup.query }}</title>
+<style>
+  @page {
+    size: A4;
+    margin: 22mm 18mm 20mm;
+    @top-left { content: "Who Are You · Analysebericht"; font-family: "DejaVu Sans", sans-serif; font-size: 8pt; color: #5d6673; }
+    @top-right { content: "{{ lookup.query }}"; font-family: "DejaVu Sans", sans-serif; font-size: 8pt; color: #5d6673; }
+    @bottom-left { content: "Erstellt {{ generated_at|date:'d.m.Y H:i' }} · vertraulich"; font-family: "DejaVu Sans", sans-serif; font-size: 8pt; color: #5d6673; }
+    @bottom-right { content: "Seite " counter(page) " von " counter(pages); font-family: "DejaVu Sans", sans-serif; font-size: 8pt; color: #5d6673; }
+  }
+  body { font-family: "DejaVu Sans", sans-serif; font-size: 9.5pt; line-height: 1.45; color: #1b1f24; }
+  h1 { font-size: 18pt; margin: 0 0 2mm; word-break: break-all; }
+  h2 { font-size: 12pt; margin: 6mm 0 2mm; border-bottom: 0.5pt solid #d9dde3; padding-bottom: 1mm; }
+  .brand { color: #2557d6; font-weight: bold; font-size: 10pt; letter-spacing: .5pt; }
+  table { width: 100%; border-collapse: collapse; }
+  th, td { text-align: left; vertical-align: top; padding: 1.2mm 2mm; border-bottom: 0.5pt solid #e3e6ea; }
+  th { width: 32%; color: #5d6673; font-weight: normal; }
+  .risk { display: inline-block; padding: 0.4mm 3mm; border-radius: 3mm; border: 1pt solid currentColor; font-weight: bold; }
+  .risk-niedrig { color: #1f7a3d; } .risk-mittel { color: #a86400; } .risk-hoch { color: #c0262d; } .risk-unklar { color: #5d6673; }
+  .report h2 { font-size: 11pt; border: 0; margin-top: 5mm; }
+  .report ul { padding-left: 5mm; }
+  .report a { color: #2557d6; text-decoration: none; }
+  .note { font-size: 8pt; color: #5d6673; margin-top: 4mm; }
+  .ok { color: #1f7a3d; } .err { color: #c0262d; }
+  .appendix { page-break-before: always; }
+  .source { margin-bottom: 4mm; page-break-inside: auto; }
+  .source h3 { font-size: 10pt; margin: 0 0 1mm; page-break-after: avoid; }
+  pre { font-family: "DejaVu Sans Mono", monospace; font-size: 7pt; white-space: pre-wrap; word-break: break-all;
+        background: #f6f7f9; border: 0.5pt solid #e3e6ea; padding: 2mm; margin: 0; }
+</style>
+</head>
+<body>
+  <div class="brand">WHO ARE YOU</div>
+  <h1>{{ lookup.query }}</h1>
+
+  <table>
+    <tr><th>Typ</th><td>{{ lookup.get_kind_display }}</td></tr>
+    <tr><th>Risikoeinschätzung</th><td>{% if lookup.risk %}<span class="risk risk-{{ lookup.risk }}">{{ lookup.risk }}</span>{% else %}–{% endif %}</td></tr>
+    <tr><th>Status</th><td>{{ lookup.get_status_display }}</td></tr>
+    <tr><th>Analyse gestartet</th><td>{{ lookup.created_at|date:"d.m.Y H:i:s" }}</td></tr>
+    <tr><th>Abgeschlossen</th><td>{{ lookup.finished_at|date:"d.m.Y H:i:s"|default:"–" }}</td></tr>
+    <tr><th>Angefordert von</th><td>{% if lookup.created_by %}{{ lookup.created_by.email|default:lookup.created_by.username }}{% else %}–{% endif %}</td></tr>
+    <tr><th>KI-Modell</th><td>{{ lookup.model|default:"–" }}</td></tr>
+  </table>
+
+  {% if lookup.error %}<p class="err">Fehler: {{ lookup.error }}</p>{% endif %}
+
+  {% if lookup.report_md %}
+    <h2>KI-Bericht</h2>
+    <div class="report">{{ lookup.report_md|markdown }}</div>
+    <p class="note">Der Bericht wurde automatisch von einem Sprachmodell aus den Rohdaten im Anhang erstellt
+      und kann Fehler enthalten. Maßgeblich sind die Rohdaten der jeweiligen Quellen.</p>
+  {% endif %}
+
+  {% if lookup.sources %}
+    <h2>Abgefragte Quellen</h2>
+    <table>
+      {% for s in lookup.sources %}
+        <tr><th>{{ s.source }}</th><td>{% if s.ok %}<span class="ok">abgefragt</span>{% else %}<span class="err">Fehler: {{ s.error }}</span>{% endif %}</td></tr>
+      {% endfor %}
+    </table>
+
+    <div class="appendix">
+      <h2>Anhang: Rohdaten</h2>
+      {% for s in lookup.sources %}{% if s.ok %}
+        <div class="source">
+          <h3>{{ s.source }}</h3>
+          <pre>{{ s.data|pretty_json }}</pre>
+        </div>
+      {% endif %}{% endfor %}
+    </div>
+  {% endif %}
+</body>
+</html>

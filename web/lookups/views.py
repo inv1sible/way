@@ -7,6 +7,7 @@ from django.urls import reverse
 from django.views.decorators.cache import cache_control
 from django.views.decorators.http import require_POST
 
+from . import pdf
 from .detect import detect, extract
 from .models import Lookup
 from .tasks import run_lookup
@@ -57,6 +58,15 @@ def share(request):
 
 def detail(request, pk):
     return render(request, "lookups/detail.html", {"lookup": get_object_or_404(_visible(request), pk=pk)})
+
+
+def report_pdf(request, pk):
+    lookup = get_object_or_404(_visible(request), pk=pk)
+    if lookup.is_running:
+        return redirect("lookups:detail", pk=pk)
+    response = HttpResponse(pdf.render(lookup, request), content_type="application/pdf")
+    response["Content-Disposition"] = f'attachment; filename="{pdf.filename(lookup)}"'
+    return response
 
 
 @require_POST
