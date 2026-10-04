@@ -125,6 +125,14 @@ AXES_RESET_ON_SUCCESS = True
 AXES_LOCKOUT_TEMPLATE = "registration/locked.html"
 AXES_CLIENT_IP_CALLABLE = "config.client_ip.client_ip"
 
+if env("REDIS_URL"):
+    CACHES = {
+        "default": {
+            "BACKEND": "django.core.cache.backends.redis.RedisCache",
+            "LOCATION": env("REDIS_URL").rsplit("/", 1)[0] + "/1",
+        }
+    }
+
 CELERY_BROKER_URL = env("REDIS_URL", "redis://redis:6379/0")
 CELERY_TASK_ACKS_LATE = True
 CELERY_WORKER_PREFETCH_MULTIPLIER = 1
@@ -145,3 +153,7 @@ OSINT_SEARXNG_URL = env("SEARXNG_URL", "http://searxng:8080")
 OSINT_DEFAULT_REGION = env("DEFAULT_REGION", "DE")
 OSINT_ABUSEIPDB_KEY = env("ABUSEIPDB_KEY")
 OSINT_GREYNOISE_KEY = env("GREYNOISE_KEY")
+OSINT_VIRUSTOTAL_KEY = env("VIRUSTOTAL_KEY")
+OSINT_OTX_KEY = env("OTX_KEY")
+OSINT_ABUSECH_KEY = env("ABUSECH_KEY")
+OSINT_CROWDSEC_KEY = env("CROWDSEC_KEY")

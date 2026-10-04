@@ -6,7 +6,7 @@ import re
 import phonenumbers
 from phonenumbers import PhoneNumberFormat, PhoneNumberType, carrier, geocoder, timezone
 
-from . import run_source, search
+from . import bnetza, run_source, search
 
 TYPE_NAMES = {
     PhoneNumberType.FIXED_LINE: "Festnetz",
@@ -95,10 +95,33 @@ def mentions_number(hit, variants):
     return any(v in text for v in variants)
 
 
-async def web_search(client, e164):
+def _national_and_variants(e164):
     number = phonenumbers.parse(e164)
     national = re.sub(r"\D", "", phonenumbers.format_number(number, PhoneNumberFormat.NATIONAL))
-    variants = {national, e164.lstrip("+")}
+    return national, {national, e164.lstrip("+")}
+
+
+# Portale mit Nutzerbewertungen zu Anrufern; gesucht wird über SearXNG, nicht per Scraping.
+SPAM_PORTALS = ("tellows.de", "cleverdialer.de", "wemgehoert.de", "dasoertliche.de")
+
+
+async def spam_portals(client, e164):
+    national, variants = _national_and_variants(e164)
+    batches = await asyncio.gather(
+        *(search.searx(client, f"site:{domain} {national}", limit=5) for domain in SPAM_PORTALS),
+        return_exceptions=True,
+    )
+    result = {}
+    for domain, batch in zip(SPAM_PORTALS, batches):
+        if isinstance(batch, Exception):
+            result[domain] = {"fehler": f"{type(batch).__name__}: {batch}"}
+        else:
+            result[domain] = [hit for hit in batch if mentions_number(hit, variants)] or "kein Treffer"
+    return result
+
+
+async def web_search(client, e164):
+    national, variants = _national_and_variants(e164)
     batches = await asyncio.gather(*(search.searx(client, f'"{q}"') for q in (national, e164)))
     seen, hits = set(), []
     for hit in (h for batch in batches for h in batch):
@@ -112,6 +135,8 @@ async def collect(client, e164):
     return list(
         await asyncio.gather(
             run_source("Rufnummernanalyse (libphonenumber)", analyze, e164),
+            run_source("Bundesnetzagentur-Maßnahmenliste", bnetza.check, client, e164),
+            run_source("Spam-Portale (Websuche)", spam_portals, client, e164),
             run_source("Websuche (SearXNG)", web_search, client, e164),
         )
     )

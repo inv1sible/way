@@ -7,7 +7,7 @@ import time
 
 from django.conf import settings
 
-from . import run_source
+from . import run_source, threatintel
 
 CGNAT = ipaddress.ip_network("100.64.0.0/10")
 
@@ -167,6 +167,7 @@ async def collect(client, ip):
         jobs.append(("Spamhaus ZEN", spamhaus, ip))
     if settings.OSINT_ABUSEIPDB_KEY:
         jobs.append(("AbuseIPDB", abuseipdb, client, ip))
+    jobs += threatintel.jobs(client, ip, "ip")
 
     results += await asyncio.gather(*(run_source(name, fn, *args) for name, fn, *args in jobs))
     return results

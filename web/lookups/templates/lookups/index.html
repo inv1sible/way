@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 {% block content %}
-<form method="post" class="search">{% csrf_token %}
+{% if shared %}<p class="muted">Geteilt: „{{ shared|truncatechars:160 }}“</p>{% endif %}
+<form method="post" action="{% url 'lookups:index' %}" class="search">{% csrf_token %}
   <input name="q" value="{{ q }}" placeholder="Rufnummer, IP-Adresse oder Hostname, z. B. 030 1234567 oder 203.0.113.7"
          autocomplete="off" autofocus required>
   <button>Analysieren</button>

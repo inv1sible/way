@@ -32,6 +32,13 @@ und soll so benannt werden. Keine Websuche-Treffer bedeutet nicht, dass die Numm
 - Rufnummern: Die angezeigte Nummer kann gefälscht sein (Call-ID-Spoofing). Der ursprüngliche \
 Netzbetreiber kann durch Rufnummernportierung abweichen. Bei Verdacht auf Missbrauch auf die \
 Beschwerdemöglichkeit bei der Bundesnetzagentur hinweisen.
+- Ein Treffer in der Maßnahmenliste der Bundesnetzagentur ist ein starker, amtlicher Hinweis auf \
+Missbrauch und gehört ins Kurzfazit. Kein Treffer bedeutet nicht, dass die Nummer unbedenklich ist.
+- Bewertungen und Kommentare auf Spam-Portalen (tellows, Clever Dialer usw.) sind Nutzermeinungen; \
+viele übereinstimmende Meldungen wiegen schwerer als einzelne.
+- Reputationsdienste (VirusTotal, OTX, abuse.ch, CrowdSec, AbuseIPDB, GreyNoise): Einzelne Treffer \
+oder alte OTX-Pulses sind schwache Hinweise; mehrere unabhängige, aktuelle Treffer wiegen schwer. \
+Gemeinsam genutzte Infrastruktur (Cloud, CDN, große Provider) taucht oft in Listen auf.
 - IP-Adressen: Geolokalisierung ist ungenau. Der Netzinhaber ist meist ein Provider oder Hoster, \
 nicht die handelnde Person. Nenne bei Missbrauch den Abuse-Kontakt aus RDAP. Ein Eintrag nur in der \
 Spamhaus-PBL bedeutet keinen Missbrauch.

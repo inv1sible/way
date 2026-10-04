@@ -6,8 +6,8 @@ from django.test import SimpleTestCase, TestCase, override_settings
 from django.urls import reverse
 
 from . import llm
-from .collectors import host, ip, phone
-from .detect import detect
+from .collectors import bnetza, host, ip, phone, threatintel
+from .detect import detect, extract
 from .models import Lookup
 from .templatetags.report_tags import markdown
 
@@ -82,7 +82,7 @@ class IpTests(SimpleTestCase):
 class HostTests(SimpleTestCase):
     def test_dyndns_hint_and_ip_analysis(self):
         fake = [(None, None, None, "", ("192.168.178.1", 0))]
-        with mock.patch("socket.getaddrinfo", return_value=fake):
+        with mock.patch("socket.getaddrinfo", return_value=fake), mock.patch.object(threatintel, "jobs", return_value=[]):
             results = asyncio.run(host.collect(client=None, host="abc.myfritz.net"))
         dns = results[0]["data"]
         self.assertIn("FRITZ!Box", dns["hinweis"])
@@ -90,7 +90,8 @@ class HostTests(SimpleTestCase):
         self.assertEqual(results[1]["source"], "Adressklassifizierung")
 
     def test_unresolvable_host_is_reported(self):
-        with mock.patch("socket.getaddrinfo", side_effect=OSError("Name or service not known")):
+        with mock.patch("socket.getaddrinfo", side_effect=OSError("Name or service not known")), \
+                mock.patch.object(threatintel, "jobs", return_value=[]):
             results = asyncio.run(host.collect(client=None, host="gibtsnicht.example"))
         self.assertEqual(len(results), 1)
         self.assertFalse(results[0]["ok"])
@@ -190,3 +191,80 @@ class TaskTests(TestCase):
         self.assertEqual(lookup.status, Lookup.Status.FAILED)
         self.assertIn("Ollama weg", lookup.error)
         self.assertEqual(lookup.sources[0]["source"], "Adressklassifizierung")
+
+
+class ExtractTests(SimpleTestCase):
+    def test_finds_value_in_shared_text(self):
+        cases = {
+            "Verpasster Anruf von +49 211 1234567 am 04.10.2026": "+49 211 1234567",
+            "Login von 203.0.113.7 um 21:43:13": "203.0.113.7",
+            "Schau mal https://way.example.org/pfad?x=1": "https://way.example.org/pfad?x=1",
+            "030 1234567": "030 1234567",
+        }
+        for text, expected in cases.items():
+            self.assertEqual(extract(text), expected, text)
+
+    def test_nothing_found(self):
+        self.assertIsNone(extract("Hallo, wie geht's?"))
+
+
+class BnetzaTests(SimpleTestCase):
+    PAGE = """<table><tbody>
+      <tr class="odd"><td>01.10.2026</td><td>03012345678, 03087654321</td><td>Internet PopUp</td>
+          <td>Abschaltung der Rufnummern zum 08.10.2026</td></tr>
+      <tr><td>30.09.2026</td><td>017612345678</td><td>Spam-Messenger</td><td>Abschaltung</td></tr>
+    </tbody></table>"""
+
+    def test_parse_table_indexes_every_number(self):
+        index = bnetza.parse_table(self.PAGE)
+        self.assertEqual(set(index), {"03012345678", "03087654321", "017612345678"})
+        self.assertEqual(index["03087654321"][0]["kategorie"], "Internet PopUp")
+
+    def test_check_uses_national_format(self):
+        index = bnetza.parse_table(self.PAGE)
+        with mock.patch.object(bnetza.cache, "aget", mock.AsyncMock(return_value=index)):
+            hit = asyncio.run(bnetza.check(None, "+4917612345678"))
+            miss = asyncio.run(bnetza.check(None, "+49301234567"))
+        self.assertEqual(hit["treffer"][0]["kategorie"], "Spam-Messenger")
+        self.assertEqual(miss["treffer"], [])
+
+
+class SpamPortalTests(SimpleTestCase):
+    def test_only_hits_with_number_are_kept(self):
+        async def fake_searx(client, query, limit=10):
+            return [
+                {"titel": "0211 1234567 - Bewertung", "url": "https://www.tellows.de/num/02111234567", "auszug": "Score 8"},
+                {"titel": "Irgendwas", "url": "https://www.tellows.de/x", "auszug": "andere Nummer"},
+            ]
+        with mock.patch.object(phone.search, "searx", fake_searx):
+            result = asyncio.run(phone.spam_portals(None, "+492111234567"))
+        self.assertEqual(len(result["tellows.de"]), 1)
+
+
+class ThreatIntelTests(SimpleTestCase):
+    @override_settings(OSINT_VIRUSTOTAL_KEY="", OSINT_ABUSECH_KEY="", OSINT_CROWDSEC_KEY="")
+    def test_only_keyless_sources_without_keys(self):
+        self.assertEqual([j[0] for j in threatintel.jobs(None, "8.8.8.8", "ip")], ["AlienVault OTX"])
+
+    @override_settings(OSINT_VIRUSTOTAL_KEY="k", OSINT_ABUSECH_KEY="k", OSINT_CROWDSEC_KEY="k")
+    def test_crowdsec_only_for_ips(self):
+        self.assertIn("CrowdSec CTI", [j[0] for j in threatintel.jobs(None, "8.8.8.8", "ip")])
+        self.assertNotIn("CrowdSec CTI", [j[0] for j in threatintel.jobs(None, "example.com", "domain")])
+
+
+class PwaTests(TestCase):
+    def test_manifest_and_service_worker_without_login(self):
+        manifest = self.client.get("/manifest.webmanifest")
+        self.assertEqual(manifest.status_code, 200)
+        self.assertEqual(manifest.json()["share_target"]["action"], reverse("lookups:share"))
+        self.assertEqual(self.client.get("/sw.js")["Content-Type"], "application/javascript")
+
+    def test_share_prefills_form_without_starting_lookup(self):
+        self.client.force_login(get_user_model().objects.create_user("t", password="pw-123456"))
+        response = self.client.get(reverse("lookups:share"), {"text": "Anruf von 0211 1234567"})
+        self.assertContains(response, 'value="0211 1234567"')
+        self.assertFalse(Lookup.objects.exists())
+
+    def test_share_requires_login(self):
+        response = self.client.get(reverse("lookups:share"), {"text": "8.8.8.8"})
+        self.assertEqual(response.status_code, 302)

@@ -4,8 +4,13 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}OSINT-Agent{% endblock %}</title>
+  <meta name="theme-color" content="#2557d6">
+  <link rel="manifest" href="{% url 'lookups:manifest' %}">
+  <link rel="icon" href="{% static 'lookups/icons/icon-192.png' %}">
+  <link rel="apple-touch-icon" href="{% static 'lookups/icons/icon-192.png' %}">
   {% block head %}{% endblock %}
   <link rel="stylesheet" href="{% static 'lookups/style.css' %}">
+  <script src="{% static 'lookups/app.js' %}" defer></script>
 </head>
 <body>
   <header>
