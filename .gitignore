@@ -1,0 +1,6 @@
+.env
+__pycache__/
+*.pyc
+web/staticfiles/
+web/db.sqlite3
+searxng/uwsgi.ini

@@ -1,0 +1,21 @@
+{% load static %}<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}OSINT-Agent{% endblock %}</title>
+  {% block head %}{% endblock %}
+  <link rel="stylesheet" href="{% static 'lookups/style.css' %}">
+</head>
+<body>
+  <header>
+    <a href="{% url 'lookups:index' %}" class="brand">OSINT-Agent</a>
+    {% if user.is_authenticated %}
+      <form method="post" action="{% url 'logout' %}">{% csrf_token %}
+        <span class="muted">{{ user.username }}</span> <button class="link">Abmelden</button>
+      </form>
+    {% endif %}
+  </header>
+  <main>{% block content %}{% endblock %}</main>
+</body>
+</html>

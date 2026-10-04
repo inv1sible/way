@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block content %}
+<form method="post" class="search">{% csrf_token %}
+  <input name="q" value="{{ q }}" placeholder="Rufnummer, IP-Adresse oder Hostname, z. B. 030 1234567 oder 203.0.113.7"
+         autocomplete="off" autofocus required>
+  <button>Analysieren</button>
+</form>
+{% if error %}<p class="error">{{ error }}</p>{% endif %}
+
+<h2>Verlauf</h2>
+{% if lookups %}
+<div class="table-wrap">
+<table>
+  <thead><tr><th>Abfrage</th><th>Typ</th><th>Risiko</th><th>Status</th><th>Zeit</th></tr></thead>
+  <tbody>
+  {% for l in lookups %}
+    <tr>
+      <td><a href="{% url 'lookups:detail' l.pk %}">{{ l.query }}</a></td>
+      <td>{{ l.get_kind_display }}</td>
+      <td><span class="risk risk-{{ l.risk|default:'none' }}">{{ l.risk|default:"–" }}</span></td>
+      <td>{{ l.get_status_display }}</td>
+      <td class="muted">{{ l.created_at|date:"d.m.Y H:i" }}</td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+{% else %}
+<p class="muted">Noch keine Analysen.</p>
+{% endif %}
+{% endblock %}

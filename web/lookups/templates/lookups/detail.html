@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% load report_tags %}
+{% block title %}{{ lookup.query }} · OSINT-Agent{% endblock %}
+{% block head %}{% if lookup.is_running %}<meta http-equiv="refresh" content="3">{% endif %}{% endblock %}
+{% block content %}
+<p><a href="{% url 'lookups:index' %}">← Neue Abfrage</a></p>
+<h1>{{ lookup.query }}</h1>
+<p class="muted">
+  {{ lookup.get_kind_display }} · {{ lookup.created_at|date:"d.m.Y H:i" }}
+  {% if lookup.model %} · Modell {{ lookup.model }}{% endif %}
+  {% if lookup.risk %} · <span class="risk risk-{{ lookup.risk }}">Risiko {{ lookup.risk }}</span>{% endif %}
+</p>
+
+{% if lookup.is_running %}
+  <p class="progress"><span class="spinner"></span> {{ lookup.get_status_display }} …</p>
+{% endif %}
+{% if lookup.error %}<p class="error">{{ lookup.error }}</p>{% endif %}
+
+{% if lookup.report_md %}
+  <article class="card report">{{ lookup.report_md|markdown }}</article>
+{% endif %}
+
+{% if lookup.sources %}
+  <h2>Rohdaten</h2>
+  {% for s in lookup.sources %}
+    <details>
+      <summary>{{ s.source }}{% if not s.ok %} <span class="risk risk-hoch">Fehler</span>{% endif %}</summary>
+      {% if s.ok %}<pre>{{ s.data|pretty_json }}</pre>{% else %}<p class="error">{{ s.error }}</p>{% endif %}
+    </details>
+  {% endfor %}
+{% endif %}
+
+{% if not lookup.is_running %}
+  <form method="post" action="{% url 'lookups:rerun' lookup.pk %}">{% csrf_token %}
+    <button>Erneut analysieren</button>
+  </form>
+{% endif %}
+{% endblock %}

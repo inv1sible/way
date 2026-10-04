@@ -1,0 +1,16 @@
+use_default_settings: true
+
+general:
+  instance_name: "osint-search"
+
+server:
+  # wird durch die Umgebungsvariable SEARXNG_SECRET überschrieben
+  secret_key: "change-me"
+  limiter: false
+  image_proxy: false
+
+search:
+  safe_search: 0
+  formats:
+    - html
+    - json
