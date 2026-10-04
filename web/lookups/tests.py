@@ -204,6 +204,12 @@ class ExtractTests(SimpleTestCase):
         for text, expected in cases.items():
             self.assertEqual(extract(text), expected, text)
 
+    def test_vcard_numbers(self):
+        from .detect import vcard_text
+        vcf = "BEGIN:VCARD\nFN:X\nitem1.TEL;type=CELL:+49 211 1234567\nTEL;VALUE=uri:tel:+4930123456\nEND:VCARD"
+        self.assertEqual(vcard_text(vcf), "+49 211 1234567 +4930123456")
+        self.assertEqual(vcard_text("nur Text"), "nur Text")
+
     def test_nothing_found(self):
         self.assertIsNone(extract("Hallo, wie geht's?"))
 
@@ -256,13 +262,29 @@ class PwaTests(TestCase):
     def test_manifest_and_service_worker_without_login(self):
         manifest = self.client.get("/manifest.webmanifest")
         self.assertEqual(manifest.status_code, 200)
-        self.assertEqual(manifest.json()["share_target"]["action"], reverse("lookups:share"))
-        self.assertEqual(self.client.get("/sw.js")["Content-Type"], "application/javascript")
+        data = manifest.json()
+        self.assertEqual(data["short_name"], "Who Are You")
+        self.assertEqual(data["share_target"]["action"], reverse("lookups:share"))
+        self.assertEqual(data["share_target"]["method"], "POST")
+        self.assertIn(".vcf", data["share_target"]["params"]["files"][0]["accept"])
+        sw = self.client.get("/service-worker")
+        self.assertEqual(sw["Content-Type"], "application/javascript")
+        self.assertIn(r"/\r?\n[ \t]/g", sw.content.decode())  # Escapes müssen erhalten bleiben
 
     def test_share_prefills_form_without_starting_lookup(self):
         self.client.force_login(get_user_model().objects.create_user("t", password="pw-123456"))
         response = self.client.get(reverse("lookups:share"), {"text": "Anruf von 0211 1234567"})
         self.assertContains(response, 'value="0211 1234567"')
+        self.assertFalse(Lookup.objects.exists())
+
+    def test_share_post_with_vcard_without_csrf_token(self):
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        from django.test import Client
+        client = Client(enforce_csrf_checks=True)
+        client.force_login(get_user_model().objects.create_user("t", password="pw-123456"))
+        vcf = b"BEGIN:VCARD\r\nVERSION:3.0\r\nFN:Unbekannt\r\nTEL;TYPE=CELL:+49 176 1234\r\n 5678\r\nEND:VCARD\r\n"
+        response = client.post(reverse("lookups:share"), {"files": SimpleUploadedFile("k.vcf", vcf, "text/vcard")})
+        self.assertContains(response, 'value="+49 176 12345678"')
         self.assertFalse(Lookup.objects.exists())
 
     def test_share_requires_login(self):

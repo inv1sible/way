@@ -77,3 +77,16 @@ def extract(text):
             continue
         return candidate.strip()
     return None
+
+
+def vcard_text(text):
+    """Rufnummern aus einer Visitenkarte (vCard), wie sie Telefon- und Kontakte-Apps teilen."""
+    if "BEGIN:VCARD" not in text.upper():
+        return text[:2000]
+    unfolded = re.sub(r"\r?\n[ \t]", "", text)
+    numbers = [
+        line.split(":", 1)[1].strip().removeprefix("tel:")
+        for line in unfolded.splitlines()
+        if re.match(r"(item\d+\.)?TEL[;:]", line, re.IGNORECASE) and ":" in line
+    ]
+    return " ".join(numbers)

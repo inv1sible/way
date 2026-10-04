@@ -1,5 +1,5 @@
 if ("serviceWorker" in navigator) {
-  navigator.serviceWorker.register("/sw.js").catch(() => {});
+  navigator.serviceWorker.register("/service-worker", { scope: "/" }).catch(() => {});
 }
 
 document.addEventListener("click", (event) => {

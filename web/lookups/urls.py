@@ -11,5 +11,6 @@ urlpatterns = [
     path("analyse/<int:pk>/erneut/", views.rerun, name="rerun"),
     path("analyse/<int:pk>/pdf/", views.report_pdf, name="pdf"),
     path("manifest.webmanifest", views.manifest, name="manifest"),
-    path("sw.js", views.service_worker, name="service_worker"),
+    # ohne .js-Endung, damit Reverse-Proxy-Caches für statische Dateien sie nicht zwischenspeichern
+    path("service-worker", views.service_worker, name="service_worker"),
 ]
