@@ -27,6 +27,12 @@ class DetectTests(SimpleTestCase):
         self.assertEqual(detect("example.com"), ("host", "example.com"))
         self.assertEqual(detect("https://203.0.113.7:8443/x"), ("ip", "203.0.113.7"))
 
+    def test_ipv6_zone_is_rejected(self):
+        # Zonen-Angaben könnten sonst Query-Strings in die Quell-URLs einschleusen.
+        for raw in ("2001:4860::8888%?key=x&a=", "[2001:4860::8888%25abc]", "fe80::1%eth0"):
+            with self.assertRaises(ValueError):
+                detect(raw)
+
     def test_garbage_is_rejected(self):
         for raw in ("hallo", "http://", "foo bar.com", ""):
             with self.assertRaises(ValueError):
@@ -162,6 +168,11 @@ class LoginLockoutTests(TestCase):
         for fake in ("1.1.1.1", "2.2.2.2", "3.3.3.3"):
             self._login("falsch", ip=fake, remote="192.0.2.50")
         self.assertEqual(self._login("pw-123456", ip="4.4.4.4", remote="192.0.2.50").status_code, 429)
+
+    def test_ipv6_addresses_of_one_connection_share_lockout(self):
+        for suffix in ("1", "2", "3"):
+            self._login("falsch", ip=f"2001:db8:1:2::{suffix}")
+        self.assertEqual(self._login("pw-123456", ip="2001:db8:1:2:abcd::99").status_code, 429)
 
     def test_session_cookie_is_secure(self):
         response = self._login("pw-123456")

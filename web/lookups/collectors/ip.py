@@ -28,6 +28,8 @@ _tor_cache = {"at": None, "ips": frozenset()}
 
 def classify(ip):
     addr = ipaddress.ip_address(ip)
+    if getattr(addr, "scope_id", None):
+        raise ValueError("IPv6-Adressen mit Zonen-Angabe werden nicht unterstützt.")
     info = {
         "version": addr.version,
         "oeffentlich": addr.is_global,

@@ -13,9 +13,13 @@ HOSTNAME = re.compile(r"(?=.{4,253}$)([a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a
 
 def _ip(text):
     try:
-        return str(ipaddress.ip_address(text.strip("[]")))
+        addr = ipaddress.ip_address(text.strip("[]"))
     except ValueError:
         return None
+    # IPv6-Zonen ("fe80::1%eth0") erlauben beliebige Zeichen und würden in die Quell-URLs gelangen.
+    if getattr(addr, "scope_id", None):
+        return None
+    return str(addr)
 
 
 def _hostname(text):
