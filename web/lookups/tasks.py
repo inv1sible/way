@@ -2,6 +2,7 @@ import asyncio
 import logging
 
 from celery import shared_task
+from celery.signals import worker_ready
 from django.conf import settings
 from django.utils import timezone
 
@@ -36,3 +37,17 @@ def run_lookup(lookup_id):
     except Exception as exc:
         log.exception("Analyse %s fehlgeschlagen", lookup_id)
         _update(lookup, status=Lookup.Status.FAILED, error=f"{type(exc).__name__}: {exc}", finished_at=timezone.now())
+
+
+@worker_ready.connect
+def fail_interrupted_lookups(**kwargs):
+    """Analysen, die beim Start eines Workers noch als laufend markiert sind, wurden durch einen
+    Neustart unterbrochen; ohne Markierung stünden sie bis zur erneuten Zustellung (1 h) still."""
+    interrupted = Lookup.objects.filter(status__in=[Lookup.Status.COLLECTING, Lookup.Status.ANALYZING])
+    count = interrupted.update(
+        status=Lookup.Status.FAILED,
+        error="Abgebrochen durch Neustart des Workers. Bitte erneut analysieren.",
+        finished_at=timezone.now(),
+    )
+    if count:
+        log.warning("%s unterbrochene Analyse(n) als fehlgeschlagen markiert", count)

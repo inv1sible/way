@@ -27,6 +27,8 @@ services:
   worker:
     <<: *app
     command: ["celery", "-A", "config", "worker", "--loglevel", "info", "--concurrency", "2"]
+    # Laufende Analysen (KI-Bericht dauert Minuten) beim Neustart zu Ende laufen lassen
+    stop_grace_period: 5m
 
   db:
     image: postgres:16-alpine

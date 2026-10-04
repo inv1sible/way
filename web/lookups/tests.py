@@ -333,3 +333,14 @@ class PdfTests(TestCase):
             self.client.get(reverse("lookups:pdf", args=[self.lookup.pk])),
             reverse("lookups:detail", args=[self.lookup.pk]), fetch_redirect_response=False,
         )
+
+
+class InterruptedLookupTests(TestCase):
+    def test_running_lookups_fail_on_worker_start(self):
+        from .tasks import fail_interrupted_lookups
+        running = Lookup.objects.create(kind="ip", query="1.1.1.1", status=Lookup.Status.ANALYZING)
+        queued = Lookup.objects.create(kind="ip", query="8.8.8.8", status=Lookup.Status.PENDING)
+        fail_interrupted_lookups()
+        running.refresh_from_db(); queued.refresh_from_db()
+        self.assertEqual(running.status, Lookup.Status.FAILED)
+        self.assertEqual(queued.status, Lookup.Status.PENDING)  # steht noch in der Warteschlange
