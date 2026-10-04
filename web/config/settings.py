@@ -25,6 +25,7 @@ CSRF_TRUSTED_ORIGINS = env_list("DJANGO_CSRF_TRUSTED_ORIGINS")
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 
 INSTALLED_APPS = [
+    "accounts",  # vor admin, damit die eigenen registration/-Templates Vorrang haben
     "django.contrib.admin",
     "django.contrib.auth",
     "django.contrib.contenttypes",
@@ -50,7 +51,7 @@ MIDDLEWARE = [
 
 AUTHENTICATION_BACKENDS = [
     "axes.backends.AxesStandaloneBackend",
-    "django.contrib.auth.backends.ModelBackend",
+    "accounts.backends.EmailBackend",
 ]
 
 ROOT_URLCONF = "config.urls"
@@ -111,6 +112,24 @@ STORAGES = {
 }
 
 SESSION_COOKIE_AGE = 14 * 24 * 3600
+
+INVITATION_DAYS = 7
+EMAIL_CONFIRM_DAYS = 3
+PASSWORD_RESET_TIMEOUT = 2 * 3600
+
+if env("EMAIL_HOST"):
+    EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
+    EMAIL_HOST = env("EMAIL_HOST")
+    EMAIL_PORT = int(env("EMAIL_PORT", "587"))
+    EMAIL_HOST_USER = env("EMAIL_HOST_USER")
+    EMAIL_HOST_PASSWORD = env("EMAIL_HOST_PASSWORD")
+    EMAIL_USE_SSL = env("EMAIL_USE_SSL", "0") == "1"
+    EMAIL_USE_TLS = not EMAIL_USE_SSL and env("EMAIL_USE_TLS", "1") == "1"
+    EMAIL_TIMEOUT = 20
+else:
+    # Ohne SMTP-Zugang landen Mails im Log des Web-Containers.
+    EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
+DEFAULT_FROM_EMAIL = env("DEFAULT_FROM_EMAIL", "OSINT-Agent <noreply@localhost>")
 # Cookies nur über HTTPS; für Tests ohne TLS per DJANGO_SECURE_COOKIES=0 abschaltbar.
 SESSION_COOKIE_SECURE = CSRF_COOKIE_SECURE = env("DJANGO_SECURE_COOKIES", "1") == "1"
 

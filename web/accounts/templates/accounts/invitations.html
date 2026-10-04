@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% block title %}Einladungen · OSINT-Agent{% endblock %}
+{% block content %}
+<h1>Einladungen</h1>
+
+{% if created %}
+<div class="card invite-created">
+  <h2>Einladung für {{ created.invitation.email }}</h2>
+  {% if created.mailed %}<p>Die Einladung wurde per E-Mail verschickt.</p>{% endif %}
+  {% if created.mail_failed %}<p class="error">Der Mailversand ist fehlgeschlagen. Gib den Link oder QR-Code direkt weiter.</p>{% endif %}
+  <p class="muted">Link und QR-Code werden nur jetzt angezeigt. Gültig bis {{ created.invitation.expires_at|date:"d.m.Y H:i" }} Uhr, einmal nutzbar.</p>
+  <div class="qr">{{ created.qr }}</div>
+  <div class="copy-row">
+    <input id="invite-url" value="{{ created.url }}" readonly>
+    <button type="button" data-copy="#invite-url">Kopieren</button>
+  </div>
+</div>
+{% endif %}
+
+<form method="post" class="card stack">{% csrf_token %}
+  <h2>Neue Einladung</h2>
+  {{ form.non_field_errors }}
+  <label>{{ form.email.label }} {{ form.email }}</label>{{ form.email.errors }}
+  <label>{{ form.days.label }} {{ form.days }}</label>{{ form.days.errors }}
+  <label class="check">{{ form.send_mail }} {{ form.send_mail.label }}</label>
+  <button>Einladung erstellen</button>
+  <p class="muted">Erlaubte Domains:
+    {% for d in domains %}{{ d.domain }}{% if not forloop.last %}, {% endif %}{% empty %}alle (keine Einschränkung){% endfor %}
+    · <a href="{% url 'admin:accounts_alloweddomain_changelist' %}">verwalten</a>
+  </p>
+</form>
+
+<h2>Bisherige Einladungen</h2>
+{% if invitations %}
+<div class="table-wrap">
+<table>
+  <thead><tr><th>E-Mail</th><th>Status</th><th>Gültig bis</th><th>Erstellt von</th><th></th></tr></thead>
+  <tbody>
+  {% for i in invitations %}
+    <tr>
+      <td>{{ i.email }}</td>
+      <td>{{ i.status }}{% if i.user and not i.user.is_active %} (Mail unbestätigt){% endif %}</td>
+      <td class="muted">{{ i.expires_at|date:"d.m.Y H:i" }}</td>
+      <td class="muted">{{ i.created_by.email|default:i.created_by.username }}</td>
+      <td>{% if i.status == "offen" %}
+        <form method="post" action="{% url 'accounts:revoke' i.pk %}">{% csrf_token %}<button class="link">Widerrufen</button></form>
+      {% endif %}</td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+{% else %}<p class="muted">Noch keine Einladungen.</p>{% endif %}
+{% endblock %}

@@ -8,3 +8,4 @@ phonenumbers>=8.13
 markdown-it-py>=3.0
 django-axes>=8.0
 pypdf>=5.0
+segno>=1.6

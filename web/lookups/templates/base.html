@@ -16,11 +16,20 @@
   <header>
     <a href="{% url 'lookups:index' %}" class="brand">OSINT-Agent</a>
     {% if user.is_authenticated %}
-      <form method="post" action="{% url 'logout' %}">{% csrf_token %}
-        <span class="muted">{{ user.username }}</span> <button class="link">Abmelden</button>
-      </form>
+      <nav>
+        {% if user.is_staff %}
+          <a href="{% url 'accounts:invitations' %}">Einladungen</a>
+          <a href="{% url 'admin:index' %}">Admin</a>
+        {% endif %}
+        <form method="post" action="{% url 'logout' %}">{% csrf_token %}
+          <span class="muted">{{ user.email|default:user.username }}</span> <button class="link">Abmelden</button>
+        </form>
+      </nav>
     {% endif %}
   </header>
-  <main>{% block content %}{% endblock %}</main>
+  <main>
+    {% for message in messages %}<p class="message">{{ message }}</p>{% endfor %}
+    {% block content %}{% endblock %}
+  </main>
 </body>
 </html>

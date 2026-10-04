@@ -18,11 +18,17 @@ def _start(request, kind, query):
     return redirect("lookups:detail", pk=lookup.pk)
 
 
+def _visible(request):
+    """Nutzer sehen nur ihre eigenen Analysen, Admins alle."""
+    lookups = Lookup.objects.select_related("created_by")
+    return lookups if request.user.is_staff else lookups.filter(created_by=request.user)
+
+
 def _index(request, q="", error=None, shared=None):
     return render(
         request,
         "lookups/index.html",
-        {"lookups": Lookup.objects.all()[:50], "q": q, "error": error, "shared": shared},
+        {"lookups": _visible(request)[:50], "q": q, "error": error, "shared": shared},
         status=400 if error and request.method == "POST" else 200,
     )
 
@@ -50,12 +56,12 @@ def share(request):
 
 
 def detail(request, pk):
-    return render(request, "lookups/detail.html", {"lookup": get_object_or_404(Lookup, pk=pk)})
+    return render(request, "lookups/detail.html", {"lookup": get_object_or_404(_visible(request), pk=pk)})
 
 
 @require_POST
 def rerun(request, pk):
-    lookup = get_object_or_404(Lookup, pk=pk)
+    lookup = get_object_or_404(_visible(request), pk=pk)
     return _start(request, lookup.kind, lookup.query)
 
 

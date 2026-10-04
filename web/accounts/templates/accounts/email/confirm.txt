@@ -1,0 +1,8 @@
+{% autoescape off %}
+Hallo,
+
+bitte bestätige deine E-Mail-Adresse für den OSINT-Agent:
+{{ url }}
+
+Der Link gilt {{ days }} Tage. Wenn du dich nicht registriert hast, ignoriere diese Mail.
+{% endautoescape %}

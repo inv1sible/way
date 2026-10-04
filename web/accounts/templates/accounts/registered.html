@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% block title %}Fast geschafft · OSINT-Agent{% endblock %}
+{% block content %}
+<div class="card login">
+  <h1>Fast geschafft</h1>
+  {% if mailed %}
+    <p>Wir haben eine Bestätigungsmail an <strong>{{ email }}</strong> geschickt. Klicke auf den Link darin, danach kannst du dich anmelden.</p>
+  {% else %}
+    <p class="error">Die Bestätigungsmail an {{ email }} konnte nicht verschickt werden. Bitte wende dich an einen Admin, der dein Konto freischalten kann.</p>
+  {% endif %}
+</div>
+{% endblock %}

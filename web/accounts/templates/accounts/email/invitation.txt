@@ -1,0 +1,10 @@
+{% autoescape off %}
+Hallo,
+
+{{ inviter.email|default:inviter.username }} hat dich zum OSINT-Agent eingeladen.
+
+Über diesen Link legst du dein Konto an:
+{{ url }}
+
+Der Link gilt bis {{ invitation.expires_at|date:"d.m.Y H:i" }} Uhr und kann nur einmal verwendet werden.
+{% endautoescape %}

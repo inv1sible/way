@@ -3,10 +3,11 @@
 {% block content %}
 <form method="post" class="card login">{% csrf_token %}
   <h1>Anmelden</h1>
-  {% if form.errors %}<p class="error">Benutzername oder Passwort falsch.</p>{% endif %}
-  <label>Benutzername <input name="username" autocomplete="username" autofocus required></label>
+  {% if form.errors %}<p class="error">E-Mail-Adresse oder Passwort falsch, oder die E-Mail-Adresse ist noch nicht bestätigt.</p>{% endif %}
+  <label>E-Mail <input name="username" type="text" inputmode="email" autocomplete="username" autofocus required></label>
   <label>Passwort <input name="password" type="password" autocomplete="current-password" required></label>
   <input type="hidden" name="next" value="{{ next }}">
   <button>Anmelden</button>
+  <p class="muted"><a href="{% url 'password_reset' %}">Passwort vergessen?</a> · Registrierung nur mit Einladung.</p>
 </form>
 {% endblock %}
