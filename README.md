@@ -21,7 +21,9 @@ Ollama läuft extern (`OLLAMA_URL`, Standard `http://192.168.1.139:11434`, Model
 - **Rufnummer:** libphonenumber (Land, Ortsnetz, Typ, ursprünglicher Netzbetreiber), Nummernbereiche der
   Bundesnetzagentur, Ping-Anruf-Heuristik, Websuche über SearXNG (nur Treffer, die die Nummer enthalten).
 - **IP-Adresse:** Reverse DNS, RDAP (Netzinhaber, Abuse-Kontakt), ip-api.com (Geo/ASN, Hosting/Proxy),
-  Shodan InternetDB, GreyNoise Community, Tor-Exit-Liste, Spamhaus ZEN, optional AbuseIPDB (`ABUSEIPDB_KEY`).
+  Shodan InternetDB, GreyNoise Community, Tor-Exit-Liste, Spamhaus ZEN, optional AbuseIPDB (`ABUSEIPDB_KEY`) und
+  Censys (`CENSYS_TOKEN`, Platform-API; Gratis-Tarif: nur Nachschläge, 100 Credits/Monat, deshalb Zwischenspeicher und
+  Monatsobergrenze `CENSYS_MONTHLY_LIMIT`).
 
 ## Start
 

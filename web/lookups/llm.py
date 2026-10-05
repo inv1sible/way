@@ -53,6 +53,9 @@ Gemeinsam genutzte Infrastruktur (Cloud, CDN, große Provider) taucht oft in Lis
 verraten Mail- und Hosting-Anbieter. "TLS-Zertifikat" und "Web-Kopfzeilen" stammen aus direktem Kontakt \
 mit dem Ziel: Zertifikatsinhaber, alternative Namen und Seitentitel sind starke Hinweise auf den Betreiber; \
 ein selbstsigniertes oder abgelaufenes Zertifikat deutet auf ein nachlässig betriebenes Gerät hin.
+- "Censys" zeigt Dienste, Banner und Zertifikatsnamen aus dem Internet-Scan von Censys (Gratis-Tarif ohne \
+Historie und Schwachstellen). Fehlende Dienste heißen nicht, dass sie geschlossen sind; Zertifikatsnamen \
+und Banner sind Hinweise auf den Betreiber.
 - "Portscan" gibt es nur für eigene Systeme des Nutzers: Bewerte die Angriffsfläche. Auffällig sind \
 Dienste, die nicht aus dem Internet erreichbar sein sollten (Telnet, FTP, SMB, RDP, VNC, Datenbanken, \
 Redis, Docker-/Admin-Schnittstellen) und veraltete Versionen. Nenne konkrete Maßnahmen (Port per Firewall \

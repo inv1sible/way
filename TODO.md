@@ -26,6 +26,9 @@ Analysen eigener Systeme und passive Abfragen vertretbar, für fremde Ziele mit 
 - [ ] `admin`-Konto im Admin eine E-Mail-Adresse geben (sonst kein "Passwort vergessen").
 - [ ] Grafikspeicher auf 192.168.1.139 freimachen (ca. 3 GB), damit `qwen3:8b` komplett auf die GPU passt.
 - [ ] Kostenlose API-Keys in `.env`: VirusTotal, abuse.ch, CrowdSec, AbuseIPDB.
+- [ ] Censys: Gratis-Konto auf platform.censys.io, Token (`CENSYS_TOKEN`) und Organisations-ID eintragen, dann eine
+      Analyse starten und prüfen, ob die Antwort richtig ausgewertet wird (bisher nur mit Beispieldaten getestet)
+      und wie viele Credits eine Abfrage kostet (Obergrenze `CENSYS_MONTHLY_LIMIT` danach anpassen).
 - [ ] Lokaler DNS-Eintrag für die Domain auf 192.168.1.200 (sonst erscheinen alle LAN-Geräte als 192.168.1.1
       und sperren sich gegenseitig bei Fehlanmeldungen).
 - [ ] Portscan-Befund zur eigenen Adresse prüfen (SSH, Ports 6789/8080/8443 aus dem Internet erreichbar?).

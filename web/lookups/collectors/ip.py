@@ -7,7 +7,7 @@ import time
 
 from django.conf import settings
 
-from . import run_source, threatintel, tools
+from . import censys, run_source, threatintel, tools
 
 CGNAT = ipaddress.ip_network("100.64.0.0/10")
 
@@ -168,6 +168,8 @@ async def collect(client, ip, active=False, sni=None, scan=False):
     if settings.OSINT_ABUSEIPDB_KEY:
         jobs.append(("AbuseIPDB", abuseipdb, client, ip))
     jobs += threatintel.jobs(client, ip, "ip")
+    if settings.OSINT_CENSYS_TOKEN:
+        jobs.append(("Censys (Internet-Scan-Daten)", censys.host, client, ip))
     jobs += tools.passive_ip_jobs(client, ip)
     if active:
         jobs += tools.active_ip_jobs(client, ip, sni)

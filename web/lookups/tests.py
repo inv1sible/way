@@ -7,7 +7,7 @@ from django.test import SimpleTestCase, TestCase, TransactionTestCase, override_
 from django.urls import reverse
 
 from . import llm
-from .collectors import bnetza, host, ip, phone, threatintel
+from .collectors import bnetza, censys, host, ip, phone, threatintel
 from .collectors import tools as tools_client
 from .detect import detect, extract
 from .models import Lookup, OwnedTarget
@@ -896,3 +896,122 @@ class OwnedAsnTests(TestCase):
                 mock.patch("lookups.tasks.llm.write_report", return_value="Risiko: niedrig"):
             run_lookup(lookup.pk)
         self.assertEqual((seen["scan"], seen["scan_asns"]), (True, {"AS3320"}))
+
+
+
+CENSYS_SAMPLE = {"result": {"resource": {
+    "ip": "203.0.113.5",
+    "autonomous_system": {"asn": 64500, "name": "EXAMPLE-NET", "bgp_prefix": "203.0.113.0/24"},
+    "location": {"country": "Germany", "city": "Berlin"},
+    "dns": {"reverse_dns": {"names": ["host.example.net"]}},
+    "service_count": 2,
+    "services": [
+        {"port": 443, "protocol": "HTTP", "transport_protocol": "tcp", "software": [{"product": "nginx"}],
+         "cert": {"names": ["example.org", "www.example.org"]}},
+        {"port": 22, "protocol": "SSH", "banner": "SSH-2.0-OpenSSH_9.2p1 Debian-2"},
+    ],
+}}}
+LOCMEM = {"default": {"BACKEND": "django.core.cache.backends.locmem.LocMemCache"}}
+
+
+@override_settings(CACHES=LOCMEM, OSINT_CENSYS_TOKEN="pat", OSINT_CENSYS_ORG_ID="org-1", OSINT_CENSYS_MONTHLY_LIMIT=2)
+class CensysTests(SimpleTestCase):
+    def setUp(self):
+        from django.core.cache import cache
+        cache.clear()
+
+    def _client(self, responses):
+        import httpx
+        calls = []
+
+        def handler(request):
+            calls.append(request)
+            return responses.pop(0) if len(responses) > 1 else responses[0]
+
+        return httpx.AsyncClient(transport=httpx.MockTransport(handler)), calls
+
+    def _run(self, responses, ip="203.0.113.5"):
+        client, calls = self._client(responses)
+
+        async def go():
+            async with client:
+                return await censys.host(client, ip)
+
+        return asyncio.run(go()), calls
+
+    def test_summarize_extracts_services_and_network(self):
+        summary = censys.summarize(CENSYS_SAMPLE)
+        self.assertEqual((summary["as_nummer"], summary["land"], summary["reverse_dns"]), (64500, "Germany", ["host.example.net"]))
+        self.assertEqual(summary["dienste"][0], {"port": 443, "protokoll": "HTTP", "transport": "tcp",
+                                                 "software": ["nginx"], "zertifikat_namen": ["example.org", "www.example.org"]})
+        self.assertIn("OpenSSH_9.2p1", summary["dienste"][1]["banner"])
+
+    def test_unknown_format_is_visible_not_silent(self):
+        summary = censys.summarize({"result": {"resource": {"neues_feld": 1}}})
+        self.assertIn("ohne erkennbare", summary["hinweis"])
+        self.assertEqual(summary["felder_der_antwort"], ["neues_feld"])
+
+    def test_request_uses_bearer_token_org_and_accept_header(self):
+        import httpx
+        _, calls = self._run([httpx.Response(200, json=CENSYS_SAMPLE)])
+        request = calls[0]
+        self.assertEqual(str(request.url), "https://api.platform.censys.io/v3/global/asset/host/203.0.113.5")
+        self.assertEqual(request.headers["Authorization"], "Bearer pat")
+        self.assertEqual(request.headers["X-Organization-ID"], "org-1")
+        self.assertIn("vnd.censys.api.v3.host", request.headers["Accept"])
+
+    def test_second_lookup_comes_from_cache_without_spending_credits(self):
+        import httpx
+        client, calls = self._client([httpx.Response(200, json=CENSYS_SAMPLE)])
+
+        async def go():
+            async with client:
+                return await censys.host(client, "203.0.113.5"), await censys.host(client, "203.0.113.5")
+
+        first, second = asyncio.run(go())
+        self.assertEqual(len(calls), 1)
+        self.assertTrue(second["aus_zwischenspeicher"])
+        self.assertNotIn("aus_zwischenspeicher", first)
+
+    def test_monthly_cap_stops_further_calls(self):
+        import httpx
+        client, calls = self._client([httpx.Response(404)])
+
+        async def go():
+            async with client:
+                for ip in ("203.0.113.5", "203.0.113.6"):
+                    await censys.host(client, ip)
+                await censys.host(client, "203.0.113.7")
+
+        with self.assertRaisesMessage(RuntimeError, "Obergrenze von 2"):
+            asyncio.run(go())
+        self.assertEqual(len(calls), 2)
+
+    def test_errors_are_translated(self):
+        import httpx
+        with self.assertRaisesMessage(RuntimeError, "lehnt den Zugang ab"):
+            self._run([httpx.Response(403)])
+        result, _ = self._run([httpx.Response(404)], ip="203.0.113.9")
+        self.assertIn("keine Daten", result["hinweis"])
+
+    def test_rate_limit_is_retried_once(self):
+        import httpx
+        with mock.patch.object(censys.asyncio, "sleep", mock.AsyncMock()):
+            result, calls = self._run([httpx.Response(429), httpx.Response(200, json=CENSYS_SAMPLE)])
+        self.assertEqual(len(calls), 2)
+        self.assertEqual(result["as_nummer"], 64500)
+
+    @override_settings(OSINT_CENSYS_TOKEN="")
+    def test_source_only_added_with_token(self):
+        names = []
+
+        async def fake_run_source(name, fn, *args):
+            names.append(name)
+            return {"source": name, "ok": True, "data": {}}
+
+        with mock.patch.object(ip, "run_source", fake_run_source):
+            asyncio.run(ip.collect(None, "8.8.8.8"))
+        self.assertFalse(any("Censys" in n for n in names))
+        with override_settings(OSINT_CENSYS_TOKEN="pat"), mock.patch.object(ip, "run_source", fake_run_source):
+            asyncio.run(ip.collect(None, "8.8.8.8"))
+        self.assertTrue(any("Censys" in n for n in names))
