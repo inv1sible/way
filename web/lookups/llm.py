@@ -53,6 +53,12 @@ Gemeinsam genutzte Infrastruktur (Cloud, CDN, große Provider) taucht oft in Lis
 verraten Mail- und Hosting-Anbieter. "TLS-Zertifikat" und "Web-Kopfzeilen" stammen aus direktem Kontakt \
 mit dem Ziel: Zertifikatsinhaber, alternative Namen und Seitentitel sind starke Hinweise auf den Betreiber; \
 ein selbstsigniertes oder abgelaufenes Zertifikat deutet auf ein nachlässig betriebenes Gerät hin.
+- Stichtag: "RIPEstat Routing-Historie" und "Passive DNS" zeigen den Stand zum Stichtag, alle anderen Quellen \
+den heutigen. Trenne beides im Bericht. Passive DNS ist lückenhaft: Fehlt ein Eintrag, heißt das nicht, \
+dass es keine Verbindung gab. Welche Person oder welcher Anschluss eine dynamische Adresse nutzte, weiß \
+nur der Provider; das lässt sich aus diesen Daten nicht ableiten.
+- "Frühere eigene Analysen" zeigen Veränderungen derselben Abfrage über die Zeit (z. B. wechselnde \
+Adressen eines dynamischen DNS-Namens). Nenne Änderungen seit der letzten Analyse ausdrücklich.
 - "Censys" zeigt Dienste, Banner und Zertifikatsnamen aus dem Internet-Scan von Censys (Gratis-Tarif ohne \
 Historie und Schwachstellen). Fehlende Dienste heißen nicht, dass sie geschlossen sind; Zertifikatsnamen \
 und Banner sind Hinweise auf den Betreiber.
@@ -69,7 +75,7 @@ Spamhaus-PBL bedeutet keinen Missbrauch.
 - Fasse dich kurz und sachlich."""
 
 
-def build_prompt(kind, query, sources):
+def build_prompt(kind, query, sources, as_of=None):
     label = {"phone": "die Rufnummer", "ip": "die IP-Adresse", "host": "den Hostnamen"}[kind]
     parts = []
     for source in sources:
@@ -79,7 +85,10 @@ def build_prompt(kind, query, sources):
     data = "[" + ",\n".join(parts) + "]"
     if len(data) > MAX_DATA_CHARS:
         data = data[:MAX_DATA_CHARS] + "\n… (gekürzt)"
-    return f"Heutiges Datum: {date.today():%d.%m.%Y}\nAnalysiere {label} {query}.\n\nRohdaten je Quelle (JSON):\n{data}"
+    stichtag = (f"Stichtag: {as_of:%d.%m.%Y}. Beleuchte den Stand zu diesem Datum anhand der Historie-Quellen und "
+                "trenne ihn klar vom heutigen Stand.\n") if as_of else ""
+    return (f"Heutiges Datum: {date.today():%d.%m.%Y}\n{stichtag}Analysiere {label} {query}.\n\n"
+            f"Rohdaten je Quelle (JSON):\n{data}")
 
 
 RISK_ORDER = {"": 0, "unklar": 0, "niedrig": 1, "mittel": 2, "hoch": 3}
@@ -112,7 +121,7 @@ def extract_risk(text):
     return match.group(1).lower() if match else ""
 
 
-def write_report(kind, query, sources):
+def write_report(kind, query, sources, as_of=None):
     url = settings.OSINT_OLLAMA_URL
     model = settings.OSINT_OLLAMA_MODEL
     payload = {
@@ -123,7 +132,7 @@ def write_report(kind, query, sources):
         "options": {"temperature": 0.2, "num_ctx": 8192},
         "messages": [
             {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user", "content": build_prompt(kind, query, sources)},
+            {"role": "user", "content": build_prompt(kind, query, sources, as_of)},
         ],
     }
     try:

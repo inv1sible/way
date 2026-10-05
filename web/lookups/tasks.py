@@ -7,7 +7,7 @@ from django.conf import settings
 from django.db import connection
 from django.utils import timezone
 
-from . import llm, ownership
+from . import historie, llm, ownership
 from .collectors import collect
 from .models import Lookup
 
@@ -35,7 +35,7 @@ async def _collect_with_progress(lookup, scan=False, scan_asns=None):
             await asyncio.to_thread(_save_sources, lookup.pk, list(done))
 
     return await collect(lookup.kind, lookup.query, on_result=on_result, active=lookup.active_probe, scan=scan,
-                         scan_asns=scan_asns)
+                         scan_asns=scan_asns, as_of=lookup.as_of)
 
 
 @shared_task
@@ -52,8 +52,10 @@ def run_lookup(lookup_id):
                 "source": "Portscan (nmap, Top-1000-Ports)", "ok": False,
                 "error": "Das Ziel ist nicht (mehr) als eigenes System eingetragen; der Scan wurde nicht ausgeführt.",
             })
+        if past := historie.own_history(lookup, sources, lookup.as_of):
+            sources.append({"source": historie.HISTORY_SOURCE, "ok": True, "data": past})
         _update(lookup, status=Lookup.Status.ANALYZING, sources=sources)
-        report = llm.write_report(lookup.kind, lookup.query, sources)
+        report = llm.write_report(lookup.kind, lookup.query, sources, as_of=lookup.as_of)
         report, risk = llm.apply_risk_floor(report, llm.extract_risk(report), sources)
         _update(
             lookup,

@@ -7,11 +7,11 @@ from django.test import SimpleTestCase, TestCase, TransactionTestCase, override_
 from django.urls import reverse
 
 from . import llm
-from .collectors import bnetza, censys, host, ip, phone, threatintel
+from .collectors import bnetza, censys, history, host, ip, phone, threatintel
 from .collectors import tools as tools_client
 from .detect import detect, extract
 from .models import Lookup, OwnedTarget
-from . import ownership
+from . import historie, ownership
 from .templatetags.report_tags import markdown
 
 
@@ -1015,3 +1015,275 @@ class CensysTests(SimpleTestCase):
         with override_settings(OSINT_CENSYS_TOKEN="pat"), mock.patch.object(ip, "run_source", fake_run_source):
             asyncio.run(ip.collect(None, "8.8.8.8"))
         self.assertTrue(any("Censys" in n for n in names))
+
+
+
+class HistorySourceTests(SimpleTestCase):
+    DAY = __import__("datetime").date(2026, 6, 15)
+
+    def test_routing_picks_prefixes_covering_the_day_most_specific_first(self):
+        data = {"by_origin": [
+            {"origin": "3320", "prefixes": [
+                {"prefix": "91.0.0.0/10", "timelines": [{"starttime": "2026-05-01T00:00:00", "endtime": "2026-07-01T00:00:00"}]},
+                {"prefix": "91.53.0.0/16", "timelines": [{"starttime": "2026-06-01T00:00:00", "endtime": "2026-06-30T00:00:00"}]}]},
+            {"origin": "5089", "prefixes": [
+                {"prefix": "91.0.0.0/8", "timelines": [{"starttime": "2022-12-30T00:00:00", "endtime": "2023-01-10T00:00:00"}]}]},
+        ]}
+        result = history.summarize_routing(data, self.DAY)
+        self.assertEqual([e["praefix"] for e in result["angekuendigt_zum_stichtag"]], ["91.53.0.0/16", "91.0.0.0/10"])
+        self.assertEqual(result["andere_ursprungs_as_im_zeitraum"][0]["as"], "AS5089")
+        self.assertIsNone(result["hinweis"])
+
+    def test_routing_without_announcement_says_so(self):
+        result = history.summarize_routing({"by_origin": []}, self.DAY)
+        self.assertEqual(result["angekuendigt_zum_stichtag"], [])
+        self.assertIn("keine Ankündigung", result["hinweis"])
+
+    def test_ripestat_request_is_limited_to_a_window_around_the_day(self):
+        import httpx
+        seen = {}
+
+        def handler(request):
+            seen.update(dict(request.url.params))
+            return httpx.Response(200, json={"data": {"by_origin": []}})
+
+        async def go():
+            async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+                return await history.ripestat_routing(client, "198.51.100.190", self.DAY)
+
+        asyncio.run(go())
+        self.assertEqual((seen["resource"], seen["starttime"]), ("198.51.100.190", "2025-06-10"))
+        self.assertTrue(seen["endtime"] <= __import__("datetime").date.today().isoformat())
+
+    ROWS = [
+        {"hostname": "a.example", "address": "1.2.3.4", "record_type": "A", "first": "2026-06-01T00:00:00", "last": "2026-06-20T00:00:00"},
+        {"hostname": "a.example", "address": "1.2.3.5", "record_type": "A", "first": "2026-06-21T00:00:00", "last": "2026-07-02T00:00:00"},
+        {"hostname": "b.example", "address": "1.2.3.4", "record_type": "A", "first": "2026-01-01T00:00:00", "last": "2026-02-01T00:00:00"},
+    ]
+
+    def test_passive_dns_for_host_gives_address_at_day_and_timeline(self):
+        result = history.summarize_passive(self.ROWS[:2], self.DAY, "host")
+        self.assertEqual([r["wert"] for r in result["zum_stichtag"]], ["1.2.3.4"])
+        self.assertEqual([a["wert"] for a in result["alle_adressen"]], ["1.2.3.4", "1.2.3.5"])  # Wechsel sichtbar
+        self.assertEqual(history.address_at(result), "1.2.3.4")
+
+    def test_passive_dns_for_ip_lists_names_and_falls_back_to_nearest(self):
+        result = history.summarize_passive(self.ROWS, self.DAY, "ip")
+        self.assertEqual([r["wert"] for r in result["zum_stichtag"]], ["a.example"])
+        later = history.summarize_passive(self.ROWS, __import__("datetime").date(2026, 4, 1), "ip")
+        self.assertEqual(later["zum_stichtag"], [])
+        self.assertIn("nächsten", later["hinweis"])
+        self.assertTrue(later["naechste_eintraege"][0]["abstand_tage"] > 0)
+
+    def test_passive_dns_empty_and_malformed_rows(self):
+        self.assertIn("lückenhaft", history.summarize_passive([], self.DAY, "host")["hinweis"])
+        self.assertEqual(history.summarize_passive([{"address": "1.2.3.4", "first": "kaputt"}], self.DAY, "host")["eintraege_gesamt"], 0)
+
+    def test_host_with_stichtag_looks_up_routing_of_the_historic_address(self):
+        called = []
+
+        async def fake_passive(client, indicator, kind, day):
+            return {"zum_stichtag": [{"wert": "91.1.2.3", "typ": "A"}]}
+
+        async def fake_routing(client, address, day):
+            called.append((address, day))
+            return {"angekuendigt_zum_stichtag": []}
+
+        async def fake_resolve(h):
+            return {"hostname": h, "adressen": ["91.9.9.9"]}
+
+        async def fake_ip_collect(client, address, **kwargs):
+            return []
+
+        async def go():
+            with mock.patch.object(host.history, "otx_passive_dns", fake_passive), \
+                    mock.patch.object(host.history, "ripestat_routing", fake_routing), \
+                    mock.patch.object(host, "resolve", fake_resolve), mock.patch.object(ip, "collect", fake_ip_collect), \
+                    mock.patch.object(host.tools, "dns", mock.AsyncMock(return_value={})), \
+                    mock.patch.object(host.tools, "whois", mock.AsyncMock(return_value={})), \
+                    mock.patch.object(host.threatintel, "jobs", return_value=[]):
+                return await host.collect(None, "mein.example.org", as_of=self.DAY)
+
+        results = asyncio.run(go())
+        self.assertEqual(called, [("91.1.2.3", self.DAY)])  # nicht die heutige Adresse 91.9.9.9
+        self.assertIn("RIPEstat Routing-Historie (Adresse zum Stichtag)", [r["source"] for r in results])
+
+    def test_ip_collect_adds_history_sources_only_with_stichtag(self):
+        names = []
+
+        async def fake_run_source(name, fn, *args):
+            names.append(name)
+            return {"source": name, "ok": True, "data": {}}
+
+        for as_of in (None, self.DAY):
+            names.clear()
+            with mock.patch.object(ip, "run_source", fake_run_source):
+                asyncio.run(ip.collect(None, "8.8.8.8", as_of=as_of))
+            self.assertEqual(any("RIPEstat" in n for n in names), as_of is not None)
+
+    def test_prompt_mentions_the_stichtag(self):
+        self.assertIn("Stichtag: 15.06.2026", llm.build_prompt("ip", "8.8.8.8", [], as_of=self.DAY))
+        self.assertNotIn("Stichtag", llm.build_prompt("ip", "8.8.8.8", []))
+
+
+class OwnHistoryTests(TestCase):
+    def setUp(self):
+        self.anna = get_user_model().objects.create_user("anna", password="x")
+        self.ben = get_user_model().objects.create_user("ben", password="x")
+        self.chef = get_user_model().objects.create_user("chef", password="x", is_staff=True)
+
+    def _done(self, user, addresses, when):
+        lookup = Lookup.objects.create(
+            kind="host", query="fritz.example.net", created_by=user, status=Lookup.Status.DONE, risk="niedrig",
+            sources=[{"source": "DNS-Auflösung", "ok": True, "data": {"adressen": addresses}}])
+        Lookup.objects.filter(pk=lookup.pk).update(created_at=when)
+        return lookup
+
+    def _now_sources(self, addresses):
+        return [{"source": "DNS-Auflösung", "ok": True, "data": {"adressen": addresses}}]
+
+    def test_changed_address_is_reported(self):
+        tz = __import__("django.utils.timezone", fromlist=["x"])
+        now = tz.now()
+        self._done(self.anna, ["91.0.0.1"], now - __import__("datetime").timedelta(days=3))
+        self._done(self.anna, ["91.0.0.2"], now - __import__("datetime").timedelta(days=1))
+        current = Lookup.objects.create(kind="host", query="fritz.example.net", created_by=self.anna)
+        result = historie.own_history(current, self._now_sources(["91.0.0.3"]))
+        self.assertEqual(result["anzahl_frueherer_analysen"], 2)
+        self.assertEqual(result["aenderungen_seit_letzter_analyse"], {"adressen": {"vorher": "91.0.0.2", "jetzt": "91.0.0.3"}})
+        self.assertEqual(result["analysen"][1]["geaendert"], ["adressen"])
+        self.assertNotIn("geaendert", result["analysen"][0])
+
+    def test_missing_facts_are_not_reported_as_changes(self):
+        """Lief in der früheren Analyse ein Portscan und jetzt nicht, ist das keine Änderung des Systems."""
+        old = Lookup.objects.create(
+            kind="host", query="fritz.example.net", created_by=self.anna, status=Lookup.Status.DONE,
+            sources=[{"source": "DNS-Auflösung", "ok": True, "data": {"adressen": ["91.0.0.1"]}},
+                     {"source": "Portscan (nmap, Top-1000-Ports)", "ok": True, "data": {"offen": [{"port": 22}]}}])
+        current = Lookup.objects.create(kind="host", query="fritz.example.net", created_by=self.anna)
+        result = historie.own_history(current, self._now_sources(["91.0.0.1"]))
+        self.assertEqual(result["aenderungen_seit_letzter_analyse"], {})
+        self.assertEqual(old.pk, result["analysen"][0]["analyse"])
+
+    def test_unchanged_has_no_changes_and_no_history_means_none(self):
+        current = Lookup.objects.create(kind="host", query="fritz.example.net", created_by=self.anna)
+        self.assertIsNone(historie.own_history(current, self._now_sources(["91.0.0.1"])))
+        self._done(self.anna, ["91.0.0.1"], __import__("django.utils.timezone", fromlist=["x"]).now())
+        self.assertEqual(historie.own_history(current, self._now_sources(["91.0.0.1"]))["aenderungen_seit_letzter_analyse"], {})
+
+    def test_users_only_see_their_own_history_staff_sees_all(self):
+        now = __import__("django.utils.timezone", fromlist=["x"]).now()
+        self._done(self.anna, ["91.0.0.1"], now)
+        by_ben = Lookup.objects.create(kind="host", query="fritz.example.net", created_by=self.ben)
+        by_chef = Lookup.objects.create(kind="host", query="fritz.example.net", created_by=self.chef)
+        self.assertIsNone(historie.own_history(by_ben, self._now_sources(["x"])))
+        self.assertEqual(historie.own_history(by_chef, self._now_sources(["x"]))["anzahl_frueherer_analysen"], 1)
+
+    def test_nearest_analysis_to_stichtag(self):
+        import datetime
+        now = __import__("django.utils.timezone", fromlist=["x"]).now()
+        near = self._done(self.anna, ["91.0.0.1"], now - datetime.timedelta(days=10))
+        self._done(self.anna, ["91.0.0.2"], now - datetime.timedelta(days=2))
+        current = Lookup.objects.create(kind="host", query="fritz.example.net", created_by=self.anna)
+        stichtag = (now - datetime.timedelta(days=9)).date()
+        result = historie.own_history(current, self._now_sources(["91.0.0.2"]), as_of=stichtag)
+        self.assertEqual(result["naechste_zum_stichtag"]["analyse"], near.pk)
+        self.assertEqual(result["naechste_zum_stichtag"]["abstand_tage"], 1)
+
+
+class AsOfFormTests(TestCase):
+    def setUp(self):
+        self.user = get_user_model().objects.create_user("anna", password="x")
+        self.client.force_login(self.user)
+
+    def _post(self, asof, q="8.8.8.8"):
+        with mock.patch("lookups.views.run_lookup.delay"), self.captureOnCommitCallbacks(execute=True):
+            return self.client.post(reverse("lookups:index"), {"q": q, "asof": asof})
+
+    def test_form_has_a_date_field_limited_to_today(self):
+        page = self.client.get(reverse("lookups:index"))
+        self.assertContains(page, 'name="asof"')
+        self.assertContains(page, f'max="{__import__("django.utils.timezone", fromlist=["x"]).localdate().isoformat()}"')
+
+    def test_date_is_stored_shown_and_kept_on_rerun(self):
+        self._post("2026-06-15")
+        lookup = Lookup.objects.get()
+        self.assertEqual(str(lookup.as_of), "2026-06-15")
+        self.assertContains(self.client.get(reverse("lookups:detail", args=[lookup.pk])), "Stand 15.06.2026")
+        with mock.patch("lookups.views.run_lookup.delay"), self.captureOnCommitCallbacks(execute=True):
+            self.client.post(reverse("lookups:rerun", args=[lookup.pk]))
+        self.assertEqual(str(Lookup.objects.latest("pk").as_of), "2026-06-15")
+
+    def test_empty_date_means_no_lookback(self):
+        self._post("")
+        self.assertIsNone(Lookup.objects.get().as_of)
+
+    def test_invalid_and_future_dates_are_rejected(self):
+        for value, message in (("morgen", "Ungültiges Datum"), ("2999-01-01", "Zukunft"), ("1999-12-31", "zu weit")):
+            response = self._post(value)
+            self.assertContains(response, message, status_code=400)
+        self.assertFalse(Lookup.objects.exists())
+
+    def test_task_passes_stichtag_and_attaches_history(self):
+        import datetime
+        from .tasks import run_lookup
+        Lookup.objects.create(kind="host", query="fritz.example.net", created_by=self.user, status="done",
+                              sources=[{"source": "DNS-Auflösung", "ok": True, "data": {"adressen": ["91.0.0.1"]}}])
+        lookup = Lookup.objects.create(kind="host", query="fritz.example.net", created_by=self.user,
+                                       as_of=datetime.date(2026, 6, 15))
+        seen = {}
+
+        async def fake_collect(kind, query, on_result=None, **kwargs):
+            seen.update(kwargs)
+            return [{"source": "DNS-Auflösung", "ok": True, "data": {"adressen": ["91.0.0.9"]}}]
+
+        with mock.patch("lookups.tasks.collect", fake_collect), \
+                mock.patch("lookups.tasks.llm.write_report", return_value="Risiko: niedrig") as write:
+            run_lookup(lookup.pk)
+        lookup.refresh_from_db()
+        self.assertEqual(seen["as_of"], datetime.date(2026, 6, 15))
+        self.assertEqual(write.call_args.kwargs["as_of"], datetime.date(2026, 6, 15))
+        self.assertEqual(lookup.sources[-1]["source"], "Frühere eigene Analysen")
+        page = self.client.get(reverse("lookups:detail", args=[lookup.pk]))
+        self.assertContains(page, "Verlauf dieser Abfrage")
+        self.assertContains(page, "91.0.0.9")
+
+
+class OtxPassiveRequestTests(SimpleTestCase):
+    def test_request_disables_compression_and_keep_alive(self):
+        import httpx
+        seen = {}
+
+        def handler(request):
+            seen.update(request.headers)
+            return httpx.Response(200, json={"passive_dns": []})
+
+        async def go():
+            async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+                return await history.otx_passive_dns(client, "8.8.8.8", "ip", __import__("datetime").date(2026, 6, 15))
+
+        asyncio.run(go())
+        self.assertEqual((seen["accept-encoding"], seen["connection"]), ("identity", "close"))
+
+
+    def test_one_timeout_is_retried_but_not_two(self):
+        import httpx
+        calls = []
+
+        def flaky(request):
+            calls.append(1)
+            if len(calls) == 1:
+                raise httpx.ReadTimeout("hängt", request=request)
+            return httpx.Response(200, json={"passive_dns": []})
+
+        def dead(request):
+            raise httpx.ReadTimeout("hängt", request=request)
+
+        async def go(handler):
+            async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+                return await history.otx_passive_dns(client, "8.8.8.8", "ip", __import__("datetime").date(2026, 6, 15))
+
+        self.assertEqual(asyncio.run(go(flaky))["eintraege_gesamt"], 0)
+        self.assertEqual(len(calls), 2)
+        with self.assertRaises(httpx.TimeoutException):
+            asyncio.run(go(dead))

@@ -1,0 +1,31 @@
+{% if history %}
+  <h2>Verlauf dieser Abfrage</h2>
+  {% if history.aenderungen_seit_letzter_analyse %}
+  <div class="card flags">
+    <strong>Seit der letzten Analyse ({{ history.letzte_analyse_anzeige }}) geändert</strong>
+    <ul>
+      {% for key, change in history.aenderungen_seit_letzter_analyse.items %}
+        <li><b>{{ key }}</b>: {{ change.vorher }} → {{ change.jetzt }}</li>
+      {% endfor %}
+    </ul>
+  </div>
+  {% else %}
+  <p class="muted">Seit der letzten Analyse ({{ history.letzte_analyse_anzeige }}) hat sich nichts Messbares geändert.</p>
+  {% endif %}
+  {% if history.naechste_zum_stichtag %}
+  <p class="muted">Eigene Analyse am nächsten zum Stichtag: {{ history.naechste_zum_stichtag.anzeige }}
+    ({{ history.naechste_zum_stichtag.abstand_tage }} Tage Abstand).</p>
+  {% endif %}
+  <div class="table-wrap keep">
+  <table class="ports">
+    <thead><tr><th>Datum</th><th>Risiko</th><th>Geändert gegenüber davor</th></tr></thead>
+    <tbody>
+    {% for entry in history.analysen %}
+      <tr><td class="nw"><a href="{% url 'lookups:detail' entry.analyse %}">{{ entry.anzeige }}</a></td>
+          <td class="nw">{{ entry.risiko|default:"–" }}</td>
+          <td>{% if entry.geaendert %}{{ entry.geaendert|join:", " }}{% else %}–{% endif %}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+{% endif %}

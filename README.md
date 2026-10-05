@@ -71,3 +71,12 @@ docker compose run --rm --no-deps -e TOOLS_TOKEN=x tools python -m unittest -v  
 ```
 
 Offene Punkte und Pläne (VPN, Opsec, weitere Quellen): siehe [TODO.md](TODO.md).
+
+## Stand (Rückblick auf ein Datum)
+
+Im Suchfeld lässt sich optional ein Datum wählen. Dann kommen dazu: BGP-Historie (RIPEstat: welches Netz hat die
+IP an dem Tag angekündigt), Passive DNS (AlienVault OTX: Namen auf der IP bzw. Adressen des Namens, mit
+Zeitleiste) und der Verlauf der eigenen früheren Analysen derselben Abfrage (z. B. wechselnde Adressen eines
+Dynamic-DNS-Namens; nur eigene Analysen, Admins sehen alle). Passive DNS ist lückenhaft; wer eine dynamische
+Adresse zu einem Zeitpunkt nutzte, weiß nur der Provider. Nur bereits gespeicherte Analysen reichen zurück:
+Die Historie wächst ab der ersten Analyse einer Abfrage.

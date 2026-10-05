@@ -50,3 +50,11 @@ def scan_data(sources):
         if source.get("source", "").startswith("Portscan") and source.get("ok"):
             return source["data"]
     return None
+
+
+def history_data(sources):
+    """Verlauf aus früheren eigenen Analysen, falls vorhanden."""
+    for source in sources or []:
+        if source.get("source") == "Frühere eigene Analysen" and source.get("ok"):
+            return source["data"]
+    return None

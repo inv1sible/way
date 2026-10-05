@@ -35,6 +35,11 @@ Analysen eigener Systeme und passive Abfragen vertretbar, für fremde Ziele mit 
 
 ## Weitere Quellen
 
+- [ ] Beobachtungsliste: tägliche Schnappschüsse (Zeitplaner-Container) für ausgewählte Namen/Adressen, damit die
+      Historie nicht von manuellen Analysen abhängt (z. B. tägliche Adresswechsel einer FritzBox).
+- [ ] Stand-Datum: VirusTotal-Resolutions (mit Key), Wayback Machine (war beim Test offline), RIPEstat
+      historical-whois (lieferte für ein /24 keine Versionen).
+
 - [ ] Stufe 0: Passive DNS (OTX-Daten auswerten, CIRCL), RIPEstat/BGP-Kontext, Certificate Transparency (crt.sh),
       SANS ISC.
 - [ ] Domains und E-Mail: ransomware.live, Hudson Rock (frei), Intelligence X und Have I Been Pwned (Registrierung).

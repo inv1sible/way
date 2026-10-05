@@ -32,6 +32,10 @@ class Lookup(models.Model):
     sources = models.JSONField("Rohdaten", default=list, blank=True)
     report_md = models.TextField("Bericht", blank=True)
     error = models.TextField("Fehler", blank=True)
+    as_of = models.DateField(
+        "Stand", null=True, blank=True,
+        help_text="Rückblick: Historische Quellen (BGP, Passive DNS) für dieses Datum auswerten.",
+    )
     port_scan = models.BooleanField(
         "Portscan", default=False,
         help_text="nmap-Portscan; nur für Ziele aus der Liste der eigenen Systeme.",

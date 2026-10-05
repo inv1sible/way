@@ -3,7 +3,7 @@
 import asyncio
 import socket
 
-from . import ip, run_source, threatintel, tools
+from . import history, ip, run_source, threatintel, tools
 
 DYNDNS = {
     "myfritz.net": "AVM MyFRITZ!, zeigt auf den Internetanschluss einer FRITZ!Box (meist privat)",
@@ -48,14 +48,23 @@ async def scan_scope_problem(client, addresses, allowed):
     return None
 
 
-async def collect(client, host, active=False, scan=False, scan_asns=None):
+async def collect(client, host, active=False, scan=False, scan_asns=None, as_of=None):
     domain_jobs = [(f"{name} (Hostname)", fn, *args) for name, fn, *args in threatintel.jobs(client, host, "domain")]
     domain_jobs += [("DNS-Einträge (dig)", tools.dns, client, host), ("WHOIS Domain (lokal)", tools.whois, client, host)]
+    if as_of:
+        domain_jobs.append(("Passive DNS (OTX, Adressen des Namens)", history.otx_passive_dns, client, host, "host", as_of))
     dns, domain_results = await asyncio.gather(
         run_source("DNS-Auflösung", resolve, host),
         asyncio.gather(*(run_source(*job) for job in domain_jobs)),
     )
     results = [dns, *domain_results]
+    if as_of:
+        # Auf welche Adresse zeigte der Name zum Stichtag? Für diese die BGP-Historie nachschlagen.
+        passive = next((r for r in domain_results if r["source"].startswith("Passive DNS") and r["ok"]), None)
+        then = history.address_at(passive["data"]) if passive else None
+        if then:
+            results.append(await run_source("RIPEstat Routing-Historie (Adresse zum Stichtag)",
+                                            history.ripestat_routing, client, then, as_of))
     if dns["ok"] and dns["data"]["adressen"]:
         addresses = dns["data"]["adressen"]
         target = addresses[0]

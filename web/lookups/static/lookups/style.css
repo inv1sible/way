@@ -140,6 +140,9 @@ button.secondary { background: var(--surface); color: var(--accent); border: 1px
 .flags li { margin: 4px 0; }
 
 /* Portscan-Tabelle bleibt auch mobil eine Tabelle: Zellen umbrechen statt über den Rand zu laufen */
-table.ports td, table.ports th { white-space: normal; word-break: break-word; }
+table.ports td, table.ports th { white-space: normal; overflow-wrap: anywhere; }
+table.ports td.nw, table.ports th.nw { white-space: nowrap; }
 @media (max-width: 640px) { .table-wrap.keep { overflow-x: auto; } }
 table.ports td:first-child { white-space: nowrap; }
+
+.opt-date { display: grid; gap: 4px; margin-top: 10px; font-size: .9rem; max-width: 22rem; }

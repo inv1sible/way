@@ -31,7 +31,7 @@ async def run_source(name, fn, *args):
     return result
 
 
-async def collect(kind, query, on_result=None, active=False, scan=False, scan_asns=None):
+async def collect(kind, query, on_result=None, active=False, scan=False, scan_asns=None, as_of=None):
     from . import host, ip, phone
 
     _on_result.set(on_result)
@@ -39,4 +39,4 @@ async def collect(kind, query, on_result=None, active=False, scan=False, scan_as
     collector = {"ip": ip.collect, "host": host.collect, "phone": phone.collect}[kind]
     async with httpx.AsyncClient(timeout=15, headers={"User-Agent": USER_AGENT}) as client:
         extra = {"scan_asns": scan_asns} if kind == "host" else {}
-        return await collector(client, query, active=active, scan=scan, **extra)
+        return await collector(client, query, active=active, scan=scan, as_of=as_of, **extra)

@@ -1,4 +1,5 @@
 import hashlib
+from datetime import date
 
 from django.contrib.auth.decorators import login_not_required
 from django.db import transaction
@@ -7,6 +8,7 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.template.loader import render_to_string
 from django.templatetags.static import static
 from django.urls import reverse
+from django.utils import timezone
 from django.views.decorators.cache import cache_control, never_cache
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST
@@ -14,15 +16,16 @@ from django.views.decorators.http import require_POST
 from . import ownership, pdf
 from .detect import detect, extract, vcard_text
 from .models import Lookup
-from .templatetags.report_tags import fundstellen, scan_data
+from .templatetags.report_tags import fundstellen, history_data, scan_data
 from .tasks import run_lookup
 
 
-def _start(request, kind, query, active=False, scan=False):
+def _start(request, kind, query, active=False, scan=False, as_of=None):
     # Direkter Kontakt zu fremden Zielen nur für Admins: Er geht von der Adresse dieses Servers aus.
     lookup = Lookup.objects.create(
         kind=kind, query=query, created_by=request.user,
         active_probe=bool(active and request.user.is_staff), port_scan=bool(scan and request.user.is_staff),
+        as_of=as_of,
     )
     transaction.on_commit(lambda: run_lookup.delay(lookup.pk))
     return redirect("lookups:detail", pk=lookup.pk)
@@ -38,7 +41,8 @@ def _index(request, q="", error=None, shared=None):
     return render(
         request,
         "lookups/index.html",
-        {"lookups": _visible(request)[:50], "q": q, "error": error, "shared": shared},
+        {"lookups": _visible(request)[:50], "q": q, "error": error, "shared": shared,
+         "today": timezone.localdate().isoformat()},
         status=400 if error and request.method == "POST" else 200,
     )
 
@@ -51,11 +55,15 @@ def index(request):
         kind, value = detect(query)
     except ValueError as exc:
         return _index(request, q=query, error=str(exc))
+    try:
+        as_of = parse_as_of(request.POST.get("asof", ""))
+    except ValueError as exc:
+        return _index(request, q=query, error=str(exc))
     scan = request.POST.get("scan") == "on" and request.user.is_staff and kind != "phone"
     if scan and not ownership.is_owned(kind, value):
         return _index(request, q=query, error=f"„{value}“ ist nicht als eigenes System eingetragen. "
                                               "Der Portscan ist nur für eigene Systeme erlaubt.")
-    return _start(request, kind, value, active=request.POST.get("active") == "on", scan=scan)
+    return _start(request, kind, value, active=request.POST.get("active") == "on", scan=scan, as_of=as_of)
 
 
 @csrf_exempt  # verändert nichts, füllt nur das Formular vor; POST kommt vom Teilen-Menü ohne Token
@@ -76,7 +84,23 @@ def share(request):
     return _index(request, q=candidate or "", error=error, shared=shared[:500])
 
 
-FRAGMENTS = ("meta", "progress", "error", "report", "scan", "hits", "actions")
+FRAGMENTS = ("meta", "progress", "error", "report", "scan", "history", "hits", "actions")
+
+
+def parse_as_of(text):
+    """Stichtag aus dem Formular (YYYY-MM-DD); leer = kein Rückblick."""
+    text = (text or "").strip()
+    if not text:
+        return None
+    try:
+        day = date.fromisoformat(text)
+    except ValueError:
+        raise ValueError("Ungültiges Datum für den Stand.") from None
+    if day > timezone.localdate():
+        raise ValueError("Der Stand darf nicht in der Zukunft liegen.")
+    if day < date(2000, 1, 1):
+        raise ValueError("Der Stand liegt zu weit zurück (frühestens 2000).")
+    return day
 
 
 def _rev(lookup):
@@ -88,7 +112,7 @@ def _fragments(request, lookup):
     """Teile der Detailseite als HTML samt Hash. Die Seite und der Status-Abruf nutzen dieselben
     Vorlagen; der Browser ersetzt nur Teile, deren Hash sich geändert hat."""
     context = {"lookup": lookup, "hits": fundstellen(lookup.sources), "count": len(lookup.sources),
-               "scan": scan_data(lookup.sources)}
+               "scan": scan_data(lookup.sources), "history": history_data(lookup.sources)}
 
     def part(html):
         return {"html": html, "h": hashlib.sha1(html.encode()).hexdigest()[:12]}
@@ -133,7 +157,7 @@ def report_pdf(request, pk):
 @require_POST
 def rerun(request, pk):
     lookup = get_object_or_404(_visible(request), pk=pk)
-    return _start(request, lookup.kind, lookup.query, active=lookup.active_probe, scan=lookup.port_scan)
+    return _start(request, lookup.kind, lookup.query, active=lookup.active_probe, scan=lookup.port_scan, as_of=lookup.as_of)
 
 
 @login_not_required

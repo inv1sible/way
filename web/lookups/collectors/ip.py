@@ -7,7 +7,7 @@ import time
 
 from django.conf import settings
 
-from . import censys, run_source, threatintel, tools
+from . import censys, history, run_source, threatintel, tools
 
 CGNAT = ipaddress.ip_network("100.64.0.0/10")
 
@@ -149,7 +149,7 @@ async def spamhaus(ip):
     return {"gelistet": True, "listen": [ZEN_CODES.get(a, a) for a in addrs]}
 
 
-async def collect(client, ip, active=False, sni=None, scan=False):
+async def collect(client, ip, active=False, sni=None, scan=False, as_of=None):
     info = classify(ip)
     results = [{"source": "Adressklassifizierung", "ok": True, "data": info}]
     if not info["oeffentlich"]:
@@ -175,6 +175,8 @@ async def collect(client, ip, active=False, sni=None, scan=False):
         jobs += tools.active_ip_jobs(client, ip, sni)
     if scan:
         jobs.append(tools.scan_job(client, ip))
+    if as_of:
+        jobs += history.ip_jobs(client, ip, as_of)
 
     results += await asyncio.gather(*(run_source(name, fn, *args) for name, fn, *args in jobs))
     return results

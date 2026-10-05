@@ -203,7 +203,7 @@ async def clever_dialer(client, e164):
     return {"url": url, **parse_clever_dialer(response.text)}
 
 
-async def collect(client, e164, active=False, scan=False):
+async def collect(client, e164, active=False, scan=False, as_of=None):
     async def searches():
         # Websuchen nacheinander, um die Suchmaschinen nicht mit parallelen Anfragen zu reizen
         return [

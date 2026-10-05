@@ -46,6 +46,7 @@
   <table>
     <tr><th>Typ</th><td>{{ lookup.get_kind_display }}</td></tr>
     <tr><th>Risikoeinschätzung</th><td>{% if lookup.risk %}<span class="risk risk-{{ lookup.risk }}">{{ lookup.risk }}</span>{% else %}–{% endif %}</td></tr>
+    {% if lookup.as_of %}<tr><th>Stand (Rückblick)</th><td>{{ lookup.as_of|date:"d.m.Y" }}</td></tr>{% endif %}
     <tr><th>Abfragestufe</th><td>passiv{% if lookup.active_probe %}, leise aktiv (direkter Kontakt zum Ziel){% endif %}{% if lookup.port_scan %}, Portscan (eigenes System){% endif %}</td></tr>
     <tr><th>Status</th><td>{{ lookup.get_status_display }}</td></tr>
     <tr><th>Analyse gestartet</th><td>{{ lookup.created_at|date:"d.m.Y H:i:s" }}</td></tr>
@@ -64,6 +65,7 @@
   {% endif %}
 
   {% include "lookups/live/scan.html" %}
+  {% include "lookups/live/history.html" %}
 
   {% with hits=lookup.sources|fundstellen %}{% if hits %}
     <h2>Fundstellen im Web ({{ hits|length }})</h2>
