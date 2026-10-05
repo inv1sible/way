@@ -1,4 +1,8 @@
-"""Verlauf einer Abfrage aus den bereits gespeicherten eigenen Analysen (sichtbar sind nur eigene)."""
+"""Verlauf einer Abfrage aus den bereits gespeicherten Analysen desselben Nutzers.
+
+Bewusst auch für Admins nur die eigenen: Der Verlauf wird im Bericht gespeichert und darf keine Daten
+anderer Nutzer enthalten (z. B. wenn jemand später keine Admin-Rechte mehr hat). Ohne Eigentümer gibt es
+keinen Verlauf (verweigern statt alles zeigen)."""
 
 from datetime import date
 
@@ -46,9 +50,11 @@ def _changed(before, after):
 
 
 def own_history(lookup, sources, as_of=None):
-    previous = Lookup.objects.filter(kind=lookup.kind, query=lookup.query, status=Lookup.Status.DONE).exclude(pk=lookup.pk)
-    if lookup.created_by_id and not lookup.created_by.is_staff:
-        previous = previous.filter(created_by=lookup.created_by)
+    if lookup.created_by_id is None:
+        return None
+    previous = Lookup.objects.filter(
+        kind=lookup.kind, query=lookup.query, status=Lookup.Status.DONE, created_by_id=lookup.created_by_id
+    ).exclude(pk=lookup.pk)
     older = list(previous.order_by("-created_at")[:MAX_CONSIDERED])[::-1]
     if not older:
         return None

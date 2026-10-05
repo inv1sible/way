@@ -1171,13 +1171,25 @@ class OwnHistoryTests(TestCase):
         self._done(self.anna, ["91.0.0.1"], __import__("django.utils.timezone", fromlist=["x"]).now())
         self.assertEqual(historie.own_history(current, self._now_sources(["91.0.0.1"]))["aenderungen_seit_letzter_analyse"], {})
 
-    def test_users_only_see_their_own_history_staff_sees_all(self):
+    def test_history_contains_only_the_owners_own_analyses_even_for_staff(self):
         now = __import__("django.utils.timezone", fromlist=["x"]).now()
         self._done(self.anna, ["91.0.0.1"], now)
+        self._done(self.chef, ["91.0.0.2"], now)
         by_ben = Lookup.objects.create(kind="host", query="fritz.example.net", created_by=self.ben)
         by_chef = Lookup.objects.create(kind="host", query="fritz.example.net", created_by=self.chef)
+        by_anna = Lookup.objects.create(kind="host", query="fritz.example.net", created_by=self.anna)
         self.assertIsNone(historie.own_history(by_ben, self._now_sources(["x"])))
-        self.assertEqual(historie.own_history(by_chef, self._now_sources(["x"]))["anzahl_frueherer_analysen"], 1)
+        chef = historie.own_history(by_chef, self._now_sources(["x"]))
+        self.assertEqual(chef["anzahl_frueherer_analysen"], 1)  # nur seine eigene, nicht die von anna
+        self.assertEqual(chef["analysen"][0]["fakten"]["adressen"], "91.0.0.2")
+        self.assertEqual(historie.own_history(by_anna, self._now_sources(["x"]))["analysen"][0]["fakten"]["adressen"], "91.0.0.1")
+
+    def test_lookup_without_owner_gets_no_history(self):
+        """Fail-closed: Ohne Eigentümer (z. B. gelöschter Nutzer) darf nicht der Verlauf aller erscheinen."""
+        now = __import__("django.utils.timezone", fromlist=["x"]).now()
+        self._done(self.anna, ["91.0.0.1"], now)
+        ownerless = Lookup.objects.create(kind="host", query="fritz.example.net", created_by=None)
+        self.assertIsNone(historie.own_history(ownerless, self._now_sources(["x"])))
 
     def test_nearest_analysis_to_stichtag(self):
         import datetime
