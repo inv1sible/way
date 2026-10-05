@@ -35,6 +35,8 @@ def fundstellen(sources):
         data = source.get("data")
         for group in data.values() if isinstance(data, dict) else [data]:
             for hit in group if isinstance(group, list) else []:
+                if not isinstance(hit, dict):
+                    continue
                 url = hit.get("url") or ""
                 if url.startswith(("https://", "http://")) and url not in seen:
                     seen.add(url)

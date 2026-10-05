@@ -168,6 +168,7 @@ LOGGING = {
         "weasyprint": {"level": "WARNING"},
         "weasyprint.progress": {"level": "WARNING"},
         "fontTools": {"level": "WARNING"},
+        "httpx": {"level": "WARNING"},
     },
 }
 

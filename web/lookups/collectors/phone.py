@@ -106,13 +106,22 @@ def _formats(e164):
     return national, international, digits, {digits, e164.lstrip("+")}
 
 
-async def _search_all(client, queries, variants, limit):
-    """Fragt nacheinander ab (parallele Anfragen führen zu Sperren bei den Suchmaschinen) und behält
-    nur Treffer, in denen die Nummer wirklich vorkommt."""
-    seen, hits, errors = set(), [], []
-    for query, page in queries:
+# Pause zwischen zwei Suchanfragen; schnelle Folgen lösen Sperren bei den Suchmaschinen aus.
+SEARCH_PAUSE = 1.5
+
+
+async def _search_all(client, queries, variants, limit, meta):
+    """Fragt nacheinander ab und behält nur Treffer, in denen die Nummer wirklich vorkommt.
+    queries: Liste von (Suchbegriff, Seite, Bedingung); Bedingung erhält die bisherigen Treffer."""
+    seen, hits, errors, asked = set(), [], [], 0
+    for query, page, condition in queries:
+        if condition and not condition(hits):
+            continue
+        if asked:
+            await asyncio.sleep(SEARCH_PAUSE)
+        asked += 1
         try:
-            batch = await search.searx(client, query, limit=20, pageno=page)
+            batch = await search.searx(client, query, limit=20, pageno=page, meta=meta)
         except Exception as exc:
             errors.append(f"{query}: {type(exc).__name__}")
             continue
@@ -120,15 +129,28 @@ async def _search_all(client, queries, variants, limit):
             if hit["url"] not in seen and mentions_number(hit, variants):
                 seen.add(hit["url"])
                 hits.append(hit)
-    if errors and len(errors) == len(queries):
+    if errors and len(errors) == asked:
         raise RuntimeError("Websuche nicht erreichbar: " + "; ".join(errors))
     return hits[:limit]
 
 
+def _coverage(meta):
+    return {
+        "suchmaschinen_mit_ergebnissen": sorted(meta.get("ok", ())),
+        "gestoerte_suchmaschinen": meta.get("gestoert", {}),
+    }
+
+
 async def web_search(client, e164):
-    national, international, digits, variants = _formats(e164)
-    queries = [(f'"{national}"', 1), (f'"{national}"', 2), (f'"{international}"', 1), (digits, 1)]
-    return await _search_all(client, queries, variants, limit=30)
+    national, international, _, variants = _formats(e164)
+    meta = {}
+    queries = [
+        (f'"{national}"', 1, None),
+        (f'"{international}"', 1, None),
+        (f'"{national}"', 2, lambda hits: len(hits) >= 5),  # zweite Seite nur, wenn die erste ergiebig war
+    ]
+    hits = await _search_all(client, queries, variants, limit=30, meta=meta)
+    return {"treffer": hits, **_coverage(meta)}
 
 
 # Portale mit Nutzerbewertungen und Rückwärtssuche; gesucht wird über SearXNG, nicht per Scraping.
@@ -141,7 +163,9 @@ SPAM_PORTALS = (
 async def spam_portals(client, e164):
     national, _, digits, variants = _formats(e164)
     sites = " OR ".join(f"site:{domain}" for domain in SPAM_PORTALS)
-    hits = await _search_all(client, [(f'"{national}" ({sites})', 1), (f"{digits} ({sites})", 1)], variants, limit=20)
+    # Ziffernfolge zusätzlich, weil Portale die Nummer oft so in der URL führen (tellows.de/num/0211…)
+    queries = [(f'"{national}" ({sites})', 1, None), (f"{digits} ({sites})", 1, None)]
+    hits = await _search_all(client, queries, variants, limit=20, meta={})
     result = {domain: [] for domain in SPAM_PORTALS}
     for hit in hits:
         domain = next((d for d in SPAM_PORTALS if d in hit["url"]), None)

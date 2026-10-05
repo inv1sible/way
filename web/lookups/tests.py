@@ -237,12 +237,12 @@ class BnetzaTests(SimpleTestCase):
 
 class SpamPortalTests(SimpleTestCase):
     def test_only_hits_with_number_are_kept(self):
-        async def fake_searx(client, query, limit=10, pageno=1):
+        async def fake_searx(client, query, limit=10, pageno=1, meta=None):
             return [
                 {"titel": "0211 1234567 - Bewertung", "url": "https://www.tellows.de/num/02111234567", "auszug": "Score 8"},
                 {"titel": "Irgendwas", "url": "https://www.tellows.de/x", "auszug": "andere Nummer"},
             ]
-        with mock.patch.object(phone.search, "searx", fake_searx):
+        with mock.patch.object(phone.search, "searx", fake_searx), mock.patch.object(phone, "SEARCH_PAUSE", 0):
             result = asyncio.run(phone.spam_portals(None, "+492111234567"))
         self.assertEqual(len(result["tellows.de"]), 1)
         self.assertEqual(result["cleverdialer.de"], "kein Treffer")
@@ -252,23 +252,26 @@ class WebSearchTests(SimpleTestCase):
     def test_formatted_queries_sequential_and_filtered(self):
         queries = []
 
-        async def fake_searx(client, query, limit=10, pageno=1):
+        async def fake_searx(client, query, limit=10, pageno=1, meta=None):
             queries.append((query, pageno))
+            meta.setdefault("ok", set()).add("bing")
+            meta.setdefault("gestoert", {})["google"] = "access denied"
             return [
                 {"titel": "Kita Beispielstraße", "url": "https://dekanat.example/kita", "auszug": "Tel. 069 90009123"},
                 {"titel": "Werbung", "url": "https://spam.example/", "auszug": "nichts"},
             ]
-        with mock.patch.object(phone.search, "searx", fake_searx):
-            hits = asyncio.run(phone.web_search(None, "+496990009123"))
-        self.assertEqual([h["url"] for h in hits], ["https://dekanat.example/kita"])
-        self.assertIn(('"069 90009123"', 1), queries)
-        self.assertIn(('"069 90009123"', 2), queries)
-        self.assertIn(('"+49 69 90009123"', 1), queries)
+        with mock.patch.object(phone.search, "searx", fake_searx), mock.patch.object(phone, "SEARCH_PAUSE", 0):
+            result = asyncio.run(phone.web_search(None, "+496990009123"))
+        self.assertEqual([h["url"] for h in result["treffer"]], ["https://dekanat.example/kita"])
+        self.assertEqual(queries, [('"069 90009123"', 1), ('"+49 69 90009123"', 1)])  # Seite 2 nur bei >= 5 Treffern
+        self.assertEqual(result["suchmaschinen_mit_ergebnissen"], ["bing"])
+        self.assertEqual(result["gestoerte_suchmaschinen"], {"google": "access denied"})
 
     def test_all_queries_failing_is_an_error(self):
-        async def broken(client, query, limit=10, pageno=1):
+        async def broken(client, query, limit=10, pageno=1, meta=None):
             raise RuntimeError("down")
-        with mock.patch.object(phone.search, "searx", broken), self.assertRaises(RuntimeError):
+        with mock.patch.object(phone.search, "searx", broken), mock.patch.object(phone, "SEARCH_PAUSE", 0), \
+                self.assertRaises(RuntimeError):
             asyncio.run(phone.web_search(None, "+496990009123"))
 
     def test_parse_clever_dialer(self):
@@ -283,7 +286,8 @@ class WebSearchTests(SimpleTestCase):
     def test_fundstellen_only_from_search_sources(self):
         from .templatetags.report_tags import fundstellen
         sources = [
-            {"source": "Websuche (SearXNG)", "ok": True, "data": [{"titel": "A", "url": "https://a.example/"}]},
+            {"source": "Websuche (SearXNG)", "ok": True, "data": {"treffer": [{"titel": "A", "url": "https://a.example/"}],
+                                                                  "suchmaschinen_mit_ergebnissen": ["bing"]}},
             {"source": "Spam-Portale und Telefonbücher (Websuche)", "ok": True,
              "data": {"tellows.de": [{"titel": "B", "url": "https://www.tellows.de/num/1"}], "werruft.info": "kein Treffer"}},
             {"source": "abuse.ch URLhaus", "ok": True, "data": {"urls": [{"url": "http://malware.example/x.exe"}]}},

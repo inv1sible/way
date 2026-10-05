@@ -38,6 +38,8 @@ Missbrauch und gehört ins Kurzfazit. Kein Treffer bedeutet nicht, dass die Numm
 Stellenanzeige, Gemeindebrief usw.), sind der wichtigste Hinweis auf den Anschlussinhaber: Nenne diese \
 Organisationen oder Personen im Kurzfazit mit Quelle. Nummern mit Durchwahl gehören oft zu einer \
 Telefonanlage derselben Organisation.
+- Die Websuche nennt, welche Suchmaschinen Ergebnisse geliefert haben und welche gesperrt waren. \
+Haben nur wenige geantwortet, weise darauf hin, dass die Suche unvollständig sein kann.
 - Clever Dialer: Sterne und Anzahl der Bewertungen, Anrufe und Blockierungen der letzten 30 Tage zeigen, \
 wie auffällig die Nummer bei anderen Nutzern ist; 0 Bewertungen heißt nur, dass niemand sie gemeldet hat.
 - Bewertungen und Kommentare auf Spam-Portalen (tellows, Clever Dialer usw.) sind Nutzermeinungen; \
