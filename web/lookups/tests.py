@@ -641,7 +641,7 @@ class OwnedTargetTests(TestCase):
 
     def test_is_owned(self):
         OwnedTarget.objects.create(value="8.8.8.0/24")
-        OwnedTarget.objects.create(value="Mein.Example.org")
+        OwnedTarget.objects.create(value="Mein.Example.org", asn="as64500")
         self.assertTrue(ownership.is_owned("ip", "8.8.8.8"))
         self.assertFalse(ownership.is_owned("ip", "8.8.9.8"))
         self.assertTrue(ownership.is_owned("host", "mein.example.org"))
@@ -789,3 +789,110 @@ class ScanDisplayTests(TestCase):
         pdf_response = self.client.get(reverse("lookups:pdf", args=[lookup.pk]))
         self.assertEqual(pdf_response["Content-Type"], "application/pdf")
         self.assertIn("scan", self.client.get(reverse("lookups:status", args=[lookup.pk])).json()["fragments"])
+
+
+
+class HostScanScopeTests(SimpleTestCase):
+    """Ein Hostname gehört dem Nutzer, die Adresse, auf die er zeigt, nicht unbedingt."""
+
+    def _run(self, addresses, asn_by_address, allowed, scan=True):
+        scanned, asn_calls = [], []
+
+        async def fake_resolve(h):
+            return {"hostname": h, "adressen": addresses}
+
+        async def fake_ip_collect(client, address, active=False, sni=None, scan=False):
+            if scan:
+                scanned.append(address)
+            return []
+
+        async def fake_asn(client, address):
+            asn_calls.append(address)
+            return {"asn": asn_by_address[address]}
+
+        async def go():
+            with mock.patch.object(host, "resolve", fake_resolve), mock.patch.object(ip, "collect", fake_ip_collect), \
+                    mock.patch.object(host.tools, "asn", fake_asn), \
+                    mock.patch.object(host.tools, "dns", mock.AsyncMock(return_value={})), \
+                    mock.patch.object(host.tools, "whois", mock.AsyncMock(return_value={})), \
+                    mock.patch.object(host.threatintel, "jobs", return_value=[]):
+                return await host.collect(None, "mein.example.org", scan=scan, scan_asns=allowed)
+
+        results = asyncio.run(go())
+        refusals = [r for r in results if r["source"] == host.SCAN_SOURCE]
+        return scanned, refusals, asn_calls
+
+    def test_address_in_allowed_network_is_scanned(self):
+        scanned, refusals, _ = self._run(["91.1.2.3"], {"91.1.2.3": ["AS3320"]}, {"AS3320"})
+        self.assertEqual((scanned, refusals), (["91.1.2.3"], []))
+
+    def test_name_pointing_to_foreign_network_is_not_scanned(self):
+        scanned, refusals, _ = self._run(["104.20.23.154"], {"104.20.23.154": ["AS13335"]}, {"AS3320"})
+        self.assertEqual(scanned, [])
+        self.assertIn("fremdes Netz", refusals[0]["error"])
+        self.assertFalse(refusals[0]["ok"])
+
+    def test_every_address_must_match_not_only_the_first(self):
+        scanned, refusals, calls = self._run(
+            ["91.1.2.3", "104.20.23.154"], {"91.1.2.3": ["AS3320"], "104.20.23.154": ["AS13335"]}, {"AS3320"})
+        self.assertEqual(scanned, [])
+        self.assertEqual(calls, ["91.1.2.3", "104.20.23.154"])
+        self.assertIn("AS13335", refusals[0]["error"])
+
+    def test_missing_network_entry_fails_closed(self):
+        scanned, refusals, calls = self._run(["91.1.2.3"], {"91.1.2.3": ["AS3320"]}, set())
+        self.assertEqual((scanned, calls), ([], []))
+        self.assertIn("kein Netz", refusals[0]["error"])
+
+    def test_failed_network_check_fails_closed(self):
+        async def broken(client, address):
+            raise RuntimeError("dig kaputt")
+
+        async def go():
+            return await host.scan_scope_problem(None, ["91.1.2.3"], {"AS3320"})
+
+        with mock.patch.object(host.tools, "asn", broken):
+            self.assertIn("fehlgeschlagen", asyncio.run(go()))
+
+    def test_no_check_and_no_scan_without_request(self):
+        scanned, refusals, calls = self._run(["104.20.23.154"], {}, set(), scan=False)
+        self.assertEqual((scanned, refusals, calls), ([], [], []))
+
+
+class OwnedAsnTests(TestCase):
+    def test_parse_asns(self):
+        self.assertEqual(ownership.parse_asns("AS3320, 3209;as3320"), {"AS3320", "AS3209"})
+        self.assertEqual(ownership.parse_asns(""), set())
+        from django.core.exceptions import ValidationError
+        for bad in ("Telekom", "AS", "AS12x"):
+            with self.assertRaises(ValidationError):
+                ownership.parse_asns(bad)
+
+    def test_hostname_entry_requires_asn_but_ip_entry_does_not(self):
+        from django.core.exceptions import ValidationError
+        with self.assertRaises(ValidationError):
+            OwnedTarget.objects.create(value="mein.example.org")
+        OwnedTarget.objects.create(value="8.8.8.8")
+        entry = OwnedTarget.objects.create(value="Mein.Example.org", asn="3320, as3209")
+        self.assertEqual(entry.asn, "AS3209, AS3320")
+
+    def test_allowed_asns_lookup(self):
+        OwnedTarget.objects.create(value="mein.example.org", asn="AS3320")
+        self.assertEqual(ownership.allowed_asns("host", "Mein.Example.org."), {"AS3320"})
+        self.assertEqual(ownership.allowed_asns("host", "anderer.example.org"), set())
+        self.assertIsNone(ownership.allowed_asns("ip", "8.8.8.8"))
+
+    def test_task_passes_allowed_networks_for_hosts(self):
+        from .tasks import run_lookup
+        OwnedTarget.objects.create(value="mein.example.org", asn="AS3320")
+        lookup = Lookup.objects.create(kind="host", query="mein.example.org", port_scan=True)
+        seen = {}
+
+        async def fake_collect(kind, query, on_result=None, **kwargs):
+            seen.update(kwargs)
+            return []
+
+        with mock.patch("lookups.tasks.collect", fake_collect), \
+                mock.patch("lookups.tasks.llm.write_report", return_value="Risiko: niedrig"):
+            run_lookup(lookup.pk)
+        self.assertEqual((seen["scan"], seen["scan_asns"]), (True, {"AS3320"}))

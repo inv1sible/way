@@ -27,7 +27,28 @@ async def resolve(host):
     return data
 
 
-async def collect(client, host, active=False, scan=False):
+SCAN_SOURCE = "Portscan (nmap, Top-1000-Ports)"
+
+
+async def scan_scope_problem(client, addresses, allowed):
+    """Warum der Portscan für diesen Hostnamen nicht erlaubt ist (None = erlaubt).
+
+    Ein Name beweist nicht, wem die Adresse gehört, auf die er zeigt (CDN, Cloud, geänderter
+    DNS-Eintrag): Alle Adressen müssen in den für den Eintrag festgelegten Netzen liegen."""
+    if not allowed:
+        return "Für diesen Hostnamen ist kein Netz (AS-Nummer) hinterlegt; der Scan wurde nicht ausgeführt."
+    for address in addresses:
+        try:
+            found = set((await tools.asn(client, address)).get("asn", []))
+        except Exception as exc:  # im Zweifel nicht scannen
+            return f"Netzprüfung für {address} fehlgeschlagen ({exc}); der Scan wurde nicht ausgeführt."
+        if not found & allowed:
+            return (f"{address} liegt in {', '.join(sorted(found)) or 'einem unbekannten Netz'}, erlaubt sind "
+                    f"{', '.join(sorted(allowed))}: Der Name zeigt auf ein fremdes Netz, der Scan wurde nicht ausgeführt.")
+    return None
+
+
+async def collect(client, host, active=False, scan=False, scan_asns=None):
     domain_jobs = [(f"{name} (Hostname)", fn, *args) for name, fn, *args in threatintel.jobs(client, host, "domain")]
     domain_jobs += [("DNS-Einträge (dig)", tools.dns, client, host), ("WHOIS Domain (lokal)", tools.whois, client, host)]
     dns, domain_results = await asyncio.gather(
@@ -36,7 +57,11 @@ async def collect(client, host, active=False, scan=False):
     )
     results = [dns, *domain_results]
     if dns["ok"] and dns["data"]["adressen"]:
-        target = dns["data"]["adressen"][0]
+        addresses = dns["data"]["adressen"]
+        target = addresses[0]
         dns["data"]["analysierte_adresse"] = target
-        results += await ip.collect(client, target, active=active, sni=host, scan=scan)
+        refusal = await scan_scope_problem(client, addresses, scan_asns) if scan else None
+        results += await ip.collect(client, target, active=active, sni=host, scan=scan and not refusal)
+        if refusal:
+            results.append({"source": SCAN_SOURCE, "ok": False, "error": refusal})
     return results

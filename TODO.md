@@ -43,6 +43,9 @@ Analysen eigener Systeme und passive Abfragen vertretbar, für fremde Ziele mit 
 ## Funktion und Betrieb
 
 - [ ] Eigene Systeme direkt aus der Analyse-Seite eintragen (bisher nur im Admin).
+- [ ] Echter Eigentumsnachweis für Hostnamen (Challenge per DNS-TXT oder Datei) statt nur Netzprüfung per AS-Nummer.
+- [ ] Der `tools`-Container kennt die Liste der eigenen Systeme nicht; wer das Token hat, kann beliebige öffentliche
+      Ziele scannen. Optional: signierte Freigabe je Scan oder Liste im Container prüfen.
 - [ ] Portscan: Netze statt Einzeladresse, optional zusätzliche Profile (z. B. alle 65535 Ports) für eigene Systeme.
 - [ ] Zwei-Faktor-Anmeldung; zusätzlich Sperre pro Benutzername bedenken (Abwägung: Aussperren durch Fremde).
 - [ ] Backup der PostgreSQL-Daten und der `.env`.

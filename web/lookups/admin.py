@@ -13,5 +13,5 @@ class LookupAdmin(admin.ModelAdmin):
 
 @admin.register(OwnedTarget)
 class OwnedTargetAdmin(admin.ModelAdmin):
-    list_display = ("value", "note", "created_at")
+    list_display = ("value", "asn", "note", "created_at")
     search_fields = ("value", "note")

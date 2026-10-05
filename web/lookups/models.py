@@ -63,6 +63,12 @@ class OwnedTarget(models.Model):
         help_text="z. B. 203.0.113.7, 203.0.113.0/24 oder meinserver.example.org. "
                   "Hostnamen gelten nur exakt (keine Subdomains).",
     )
+    asn = models.CharField(
+        "Erlaubte Netze (AS-Nummer)", max_length=100, blank=True,
+        help_text="Bei Hostnamen erforderlich, z. B. AS3320 (Telekom). Ein Name beweist nicht, wem die Adresse "
+                  "gehört, auf die er zeigt; gescannt wird nur, wenn alle seine Adressen in diesen Netzen liegen. "
+                  "Die AS-Nummer steht im ASN-Block einer Analyse.",
+    )
     note = models.CharField("Notiz", max_length=200, blank=True)
     created_at = models.DateTimeField("eingetragen", auto_now_add=True)
 
@@ -75,9 +81,15 @@ class OwnedTarget(models.Model):
         return self.value
 
     def clean(self):
-        from .ownership import parse
+        from django.core.exceptions import ValidationError
 
-        self.value = parse(self.value)[1]
+        from .ownership import parse, parse_asns
+
+        kind, self.value = parse(self.value)
+        asns = parse_asns(self.asn)
+        if kind == "host" and not asns:
+            raise ValidationError({"asn": "Für Hostnamen ist die AS-Nummer des Netzes erforderlich."})
+        self.asn = ", ".join(sorted(asns))
 
     def save(self, *args, **kwargs):
         self.clean()

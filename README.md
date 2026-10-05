@@ -54,7 +54,9 @@ docker compose run --rm -u "$(id -u)" -v "$PWD/web:/app" web python manage.py ma
 | Portscan (nur Admins, nur eigene Systeme) | Verbindungsversuche auf 1000 Ports | nmap (`-sT`, Top-1000-TCP, leichte Diensterkennung); auffällige Ports werden fest bewertet und heben das Risiko an |
 
 **Eigene Systeme:** Der Portscan läuft nur für Ziele, die im Admin unter "Eigene Systeme" stehen (öffentliche
-IP, Netz bis /22 bzw. /56, oder exakter Hostname). Die Anwendung prüft das beim Absenden und noch einmal im
+IP, Netz bis /22 bzw. /56, oder exakter Hostname). Ein Hostname beweist nicht, wem die Adresse gehört, auf die er
+zeigt (CDN, Cloud, geänderter DNS-Eintrag): Bei Hostnamen ist deshalb die AS-Nummer des Netzes Pflicht, und
+gescannt wird nur, wenn alle aufgelösten Adressen in diesem Netz liegen (sonst wird der Scan abgelehnt). Die Anwendung prüft das beim Absenden und noch einmal im
 Worker; der `tools`-Container selbst kennt die Liste nicht, begrenzt aber Ziel (nur öffentliche Adressen),
 Profil (fest) und Parallelität (ein Scan zur Zeit).
 

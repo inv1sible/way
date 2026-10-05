@@ -1,6 +1,7 @@
 """Liste der eigenen Systeme: Nur für sie ist der Portscan erlaubt."""
 
 import ipaddress
+import re
 
 from django.core.exceptions import ValidationError
 
@@ -26,6 +27,32 @@ def parse(value):
     if HOSTNAME.fullmatch(host):
         return "host", host
     raise ValidationError("Weder eine öffentliche IP-Adresse, ein Netz noch ein gültiger Hostname.")
+
+
+def parse_asns(text):
+    """Komma-getrennte AS-Nummern ("AS3320, 3209") als Menge von "AS<n>"."""
+    result = set()
+    for part in re.split(r"[,;\s]+", str(text or "").strip()):
+        if not part:
+            continue
+        match = re.fullmatch(r"(?:as)?(\d{1,10})", part, re.IGNORECASE)
+        if not match:
+            raise ValidationError(f"„{part}“ ist keine AS-Nummer (Beispiel: AS3320).")
+        result.add(f"AS{int(match.group(1))}")
+    return result
+
+
+def allowed_asns(kind, query):
+    """Für Hostnamen die erlaubten Netze (AS-Nummern) des Eintrags; sonst None (keine Netzprüfung nötig)."""
+    from .models import OwnedTarget
+
+    if kind != "host":
+        return None
+    entry = OwnedTarget.objects.filter(value=query.strip().lower().rstrip(".")).first()
+    try:
+        return parse_asns(entry.asn) if entry else set()
+    except ValidationError:
+        return set()  # unlesbarer Eintrag: im Zweifel nicht scannen
 
 
 def is_owned(kind, query):
