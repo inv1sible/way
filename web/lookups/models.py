@@ -32,6 +32,10 @@ class Lookup(models.Model):
     sources = models.JSONField("Rohdaten", default=list, blank=True)
     report_md = models.TextField("Bericht", blank=True)
     error = models.TextField("Fehler", blank=True)
+    active_probe = models.BooleanField(
+        "leise aktiv", default=False,
+        help_text="Ziel direkt kontaktieren (TLS-Zertifikat, Web-Kopfzeilen); erscheint im Log des Ziels.",
+    )
 
     class Meta:
         ordering = ["-created_at"]

@@ -132,3 +132,6 @@ button.secondary { background: var(--surface); color: var(--accent); border: 1px
 
 #l-conn { margin: 4px 0; }
 #l-progress:empty, #l-error:empty { display: none; }
+
+.opt { margin-top: 10px; align-items: flex-start; font-size: .9rem; }
+.opt input { margin-top: 3px; flex: none; }

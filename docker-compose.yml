@@ -6,6 +6,7 @@ x-app: &app
     POSTGRES_HOST: db
     REDIS_URL: redis://redis:6379/0
     SEARXNG_URL: http://searxng:8080
+    TOOLS_URL: http://tools:8000
   volumes:
     - /etc/localtime:/etc/localtime:ro
   restart: unless-stopped
@@ -26,9 +27,33 @@ services:
 
   worker:
     <<: *app
+    networks: [default, probe]
     command: ["celery", "-A", "config", "worker", "--loglevel", "info", "--concurrency", "2"]
     # Laufende Analysen (KI-Bericht dauert Minuten) beim Neustart zu Ende laufen lassen
     stop_grace_period: 5m
+
+  # Lokale Werkzeuge (whois, dig, openssl, curl). Eigenes Netz ohne Datenbank und Redis; zusätzlich
+  # lehnt der Dienst selbst jedes nicht-öffentliche Ziel ab.
+  tools:
+    build: ./tools
+    image: way-tools
+    environment:
+      TOOLS_TOKEN: ${TOOLS_TOKEN:?TOOLS_TOKEN fehlt in .env}
+    networks: [probe]
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 128
+    mem_limit: 256m
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3)"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+    restart: unless-stopped
 
   db:
     image: postgres:16-alpine
@@ -56,6 +81,9 @@ services:
     volumes:
       - ./searxng:/etc/searxng:rw
     restart: unless-stopped
+
+networks:
+  probe:
 
 volumes:
   pgdata:

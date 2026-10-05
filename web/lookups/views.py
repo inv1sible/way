@@ -18,8 +18,11 @@ from .templatetags.report_tags import fundstellen
 from .tasks import run_lookup
 
 
-def _start(request, kind, query):
-    lookup = Lookup.objects.create(kind=kind, query=query, created_by=request.user)
+def _start(request, kind, query, active=False):
+    # Direkter Kontakt zu fremden Zielen nur für Admins: Er geht von der Adresse dieses Servers aus.
+    lookup = Lookup.objects.create(
+        kind=kind, query=query, created_by=request.user, active_probe=bool(active and request.user.is_staff)
+    )
     transaction.on_commit(lambda: run_lookup.delay(lookup.pk))
     return redirect("lookups:detail", pk=lookup.pk)
 
@@ -47,7 +50,7 @@ def index(request):
         kind, value = detect(query)
     except ValueError as exc:
         return _index(request, q=query, error=str(exc))
-    return _start(request, kind, value)
+    return _start(request, kind, value, active=request.POST.get("active") == "on")
 
 
 @csrf_exempt  # verändert nichts, füllt nur das Formular vor; POST kommt vom Teilen-Menü ohne Token
@@ -124,7 +127,7 @@ def report_pdf(request, pk):
 @require_POST
 def rerun(request, pk):
     lookup = get_object_or_404(_visible(request), pk=pk)
-    return _start(request, lookup.kind, lookup.query)
+    return _start(request, lookup.kind, lookup.query, active=lookup.active_probe)
 
 
 @login_not_required

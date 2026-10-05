@@ -34,7 +34,7 @@ async def _collect_with_progress(lookup):
             done.append(result)
             await asyncio.to_thread(_save_sources, lookup.pk, list(done))
 
-    return await collect(lookup.kind, lookup.query, on_result=on_result)
+    return await collect(lookup.kind, lookup.query, on_result=on_result, active=lookup.active_probe)
 
 
 @shared_task

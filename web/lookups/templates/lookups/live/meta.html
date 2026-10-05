@@ -1,1 +1,1 @@
-{{ lookup.get_kind_display }} · {{ lookup.created_at|date:"d.m.Y H:i" }}{% if lookup.model %} · Modell {{ lookup.model }}{% endif %}{% if lookup.risk %} · <span class="risk risk-{{ lookup.risk }}">Risiko {{ lookup.risk }}</span>{% endif %}
+{{ lookup.get_kind_display }} · {{ lookup.created_at|date:"d.m.Y H:i" }}{% if lookup.model %} · Modell {{ lookup.model }}{% endif %}{% if lookup.active_probe %} · leise aktiv{% endif %}{% if lookup.risk %} · <span class="risk risk-{{ lookup.risk }}">Risiko {{ lookup.risk }}</span>{% endif %}

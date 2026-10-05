@@ -3,7 +3,7 @@
 import asyncio
 import socket
 
-from . import ip, run_source, threatintel
+from . import ip, run_source, threatintel, tools
 
 DYNDNS = {
     "myfritz.net": "AVM MyFRITZ!, zeigt auf den Internetanschluss einer FRITZ!Box (meist privat)",
@@ -27,8 +27,9 @@ async def resolve(host):
     return data
 
 
-async def collect(client, host):
+async def collect(client, host, active=False):
     domain_jobs = [(f"{name} (Hostname)", fn, *args) for name, fn, *args in threatintel.jobs(client, host, "domain")]
+    domain_jobs += [("DNS-Einträge (dig)", tools.dns, client, host), ("WHOIS Domain (lokal)", tools.whois, client, host)]
     dns, domain_results = await asyncio.gather(
         run_source("DNS-Auflösung", resolve, host),
         asyncio.gather(*(run_source(*job) for job in domain_jobs)),
@@ -37,5 +38,5 @@ async def collect(client, host):
     if dns["ok"] and dns["data"]["adressen"]:
         target = dns["data"]["adressen"][0]
         dns["data"]["analysierte_adresse"] = target
-        results += await ip.collect(client, target)
+        results += await ip.collect(client, target, active=active, sni=host)
     return results

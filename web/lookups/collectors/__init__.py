@@ -31,11 +31,11 @@ async def run_source(name, fn, *args):
     return result
 
 
-async def collect(kind, query, on_result=None):
+async def collect(kind, query, on_result=None, active=False):
     from . import host, ip, phone
 
     _on_result.set(on_result)
 
     collector = {"ip": ip.collect, "host": host.collect, "phone": phone.collect}[kind]
     async with httpx.AsyncClient(timeout=15, headers={"User-Agent": USER_AGENT}) as client:
-        return await collector(client, query)
+        return await collector(client, query, active=active)

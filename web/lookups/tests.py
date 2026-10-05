@@ -8,6 +8,7 @@ from django.urls import reverse
 
 from . import llm
 from .collectors import bnetza, host, ip, phone, threatintel
+from .collectors import tools as tools_client
 from .detect import detect, extract
 from .models import Lookup
 from .templatetags.report_tags import markdown
@@ -88,14 +89,17 @@ class HostTests(SimpleTestCase):
         dns = results[0]["data"]
         self.assertIn("FRITZ!Box", dns["hinweis"])
         self.assertEqual(dns["analysierte_adresse"], "192.168.178.1")
-        self.assertEqual(results[1]["source"], "Adressklassifizierung")
+        self.assertEqual(
+            [r["source"] for r in results],
+            ["DNS-Auflösung", "DNS-Einträge (dig)", "WHOIS Domain (lokal)", "Adressklassifizierung"],
+        )
 
     def test_unresolvable_host_is_reported(self):
         with mock.patch("socket.getaddrinfo", side_effect=OSError("Name or service not known")), \
                 mock.patch.object(threatintel, "jobs", return_value=[]):
             results = asyncio.run(host.collect(client=None, host="gibtsnicht.example"))
-        self.assertEqual(len(results), 1)
         self.assertFalse(results[0]["ok"])
+        self.assertNotIn("Adressklassifizierung", [r["source"] for r in results])  # ohne Adresse keine IP-Analyse
 
 
 class ReportTests(SimpleTestCase):
@@ -475,7 +479,7 @@ class IncrementalSaveTests(TransactionTestCase):
             finally:
                 connection.close()  # sonst blockiert die offene Verbindung das Aufräumen der Test-Datenbank
 
-        async def fake_collect(kind, query, on_result=None):
+        async def fake_collect(kind, query, on_result=None, **kwargs):
             await on_result({"source": "A", "ok": True, "data": 1})
             seen.append(await asyncio.to_thread(stored))
             await on_result({"source": "B", "ok": True, "data": 2})
@@ -489,3 +493,132 @@ class IncrementalSaveTests(TransactionTestCase):
         self.assertEqual(seen, [1, 2])
         self.assertEqual(lookup.status, Lookup.Status.DONE)
         self.assertEqual(len(lookup.sources), 2)
+
+
+
+@override_settings(OSINT_TOOLS_URL="http://tools:8000", OSINT_TOOLS_TOKEN="geheim")
+class ToolsClientTests(SimpleTestCase):
+    def _client(self, handler):
+        import httpx
+        return httpx.AsyncClient(transport=httpx.MockTransport(handler))
+
+    def test_call_sends_token_and_params(self):
+        import json
+        seen = {}
+
+        def handler(request):
+            seen.update(auth=request.headers["Authorization"], body=json.loads(request.content), url=str(request.url))
+            return __import__("httpx").Response(200, json={"ok": True, "data": {"asn": ["AS1"]}})
+
+        async def go():
+            async with self._client(handler) as client:
+                return await tools_client.asn(client, "8.8.8.8")
+
+        self.assertEqual(asyncio.run(go()), {"asn": ["AS1"]})
+        self.assertEqual(seen["auth"], "Bearer geheim")
+        self.assertEqual(seen["body"], {"tool": "asn", "ip": "8.8.8.8"})
+        self.assertEqual(seen["url"], "http://tools:8000/run")
+
+    def test_refusal_and_errors_become_runtime_errors(self):
+        import httpx
+
+        def handler(request):
+            return httpx.Response(400, json={"ok": False, "error": "192.168.1.1 ist keine öffentliche Adresse"})
+
+        async def go():
+            async with self._client(handler) as client:
+                await tools_client.tls(client, "192.168.1.1")
+
+        with self.assertRaisesMessage(RuntimeError, "keine öffentliche Adresse"):
+            asyncio.run(go())
+
+    @override_settings(OSINT_TOOLS_TOKEN="")
+    def test_missing_token_is_reported(self):
+        async def go():
+            await tools_client.whois(None, "8.8.8.8")
+
+        with self.assertRaisesMessage(RuntimeError, "TOOLS_TOKEN"):
+            asyncio.run(go())
+
+    def test_job_lists_by_level(self):
+        passive = [job[0] for job in tools_client.passive_ip_jobs(None, "8.8.8.8")]
+        active = tools_client.active_ip_jobs(None, "8.8.8.8", "example.com")
+        self.assertEqual(passive, ["WHOIS (lokal)", "ASN und Netzbetreiber (dig, Team Cymru)"])
+        self.assertEqual([job[0] for job in active], [
+            "TLS-Zertifikat (openssl, Port 443)", "Web-Kopfzeilen (curl, Port 443)", "Web-Kopfzeilen (curl, Port 80)"])
+        self.assertTrue(all(job[4] == "example.com" for job in active))  # SNI wird durchgereicht
+
+    def test_collectors_add_active_jobs_only_on_request(self):
+        names = {}
+
+        async def fake_run_source(name, fn, *args):
+            names.setdefault("all", []).append(name)
+            return {"source": name, "ok": True, "data": {}}
+
+        for active in (False, True):
+            names.clear()
+            with mock.patch.object(ip, "run_source", fake_run_source):
+                asyncio.run(ip.collect(None, "8.8.8.8", active=active))
+            self.assertEqual(any("TLS-Zertifikat" in n for n in names["all"]), active, active)
+            self.assertTrue(any(n.startswith("WHOIS") for n in names["all"]))
+
+
+class ActiveProbeTests(TestCase):
+    def setUp(self):
+        self.staff = get_user_model().objects.create_user("chef", password="x", is_staff=True)
+        self.normal = get_user_model().objects.create_user("anna", password="x")
+
+    def _submit(self, user, **extra):
+        self.client.force_login(user)
+        with mock.patch("lookups.views.run_lookup.delay"), self.captureOnCommitCallbacks(execute=True):
+            self.client.post(reverse("lookups:index"), {"q": "8.8.8.8", **extra})
+        return Lookup.objects.latest("pk")
+
+    def test_staff_can_enable_active_probe(self):
+        self.assertTrue(self._submit(self.staff, active="on").active_probe)
+        self.assertFalse(self._submit(self.staff).active_probe)
+
+    def test_normal_users_cannot_enable_it(self):
+        self.assertFalse(self._submit(self.normal, active="on").active_probe)
+
+    def test_checkbox_only_for_staff(self):
+        self.client.force_login(self.staff)
+        self.assertContains(self.client.get(reverse("lookups:index")), 'name="active"')
+        self.client.force_login(self.normal)
+        self.assertNotContains(self.client.get(reverse("lookups:index")), 'name="active"')
+
+    def test_rerun_keeps_the_level_and_meta_shows_it(self):
+        first = self._submit(self.staff, active="on")
+        self.client.force_login(self.staff)
+        with mock.patch("lookups.views.run_lookup.delay"), self.captureOnCommitCallbacks(execute=True):
+            self.client.post(reverse("lookups:rerun", args=[first.pk]))
+        again = Lookup.objects.latest("pk")
+        self.assertNotEqual(again.pk, first.pk)
+        self.assertTrue(again.active_probe)
+        self.assertContains(self.client.get(reverse("lookups:detail", args=[again.pk])), "leise aktiv")
+
+    def test_task_passes_level_to_collectors(self):
+        from .tasks import run_lookup
+        lookup = Lookup.objects.create(kind="ip", query="8.8.8.8", active_probe=True)
+        seen = {}
+
+        async def fake_collect(kind, query, on_result=None, active=False):
+            seen["active"] = active
+            return []
+
+        with mock.patch("lookups.tasks.collect", fake_collect), \
+                mock.patch("lookups.tasks.llm.write_report", return_value="Risiko: niedrig"):
+            run_lookup(lookup.pk)
+        self.assertTrue(seen["active"])
+
+
+class PromptBudgetTests(SimpleTestCase):
+    def test_one_large_source_does_not_push_out_the_others(self):
+        sources = [
+            {"source": "WHOIS (lokal)", "ok": True, "data": {"x": "a" * 20000}},
+            {"source": "TLS-Zertifikat (openssl, Port 443)", "ok": True, "data": {"inhaber": "CN = kita.example"}},
+        ]
+        prompt = llm.build_prompt("ip", "8.8.8.8", sources)
+        self.assertIn("kita.example", prompt)
+        self.assertIn("gekürzt", prompt)
+        self.assertLess(len(prompt), 6000)

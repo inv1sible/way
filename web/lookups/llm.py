@@ -7,7 +7,9 @@ from datetime import date
 import httpx
 from django.conf import settings
 
-MAX_DATA_CHARS = 14000
+MAX_DATA_CHARS = 15000
+SOURCE_CHARS = 2500  # je Quelle, damit eine ausführliche Quelle die anderen nicht verdrängt
+SEARCH_SOURCE_CHARS = 5000
 RISK_RE = re.compile(r"Risiko:\W*(niedrig|mittel|hoch|unklar)", re.IGNORECASE)
 
 SYSTEM_PROMPT = """Du bist ein sorgfältiger OSINT-Analyst. Du bekommst Rohdaten aus mehreren Quellen \
@@ -47,6 +49,10 @@ viele übereinstimmende Meldungen wiegen schwerer als einzelne.
 - Reputationsdienste (VirusTotal, OTX, abuse.ch, CrowdSec, AbuseIPDB, GreyNoise): Einzelne Treffer \
 oder alte OTX-Pulses sind schwache Hinweise; mehrere unabhängige, aktuelle Treffer wiegen schwer. \
 Gemeinsam genutzte Infrastruktur (Cloud, CDN, große Provider) taucht oft in Listen auf.
+- WHOIS, ASN und DNS-Einträge nennen Netzbetreiber, Organisation und Abuse-Kontakt; SPF-/MX-/NS-Einträge \
+verraten Mail- und Hosting-Anbieter. "TLS-Zertifikat" und "Web-Kopfzeilen" stammen aus direktem Kontakt \
+mit dem Ziel: Zertifikatsinhaber, alternative Namen und Seitentitel sind starke Hinweise auf den Betreiber; \
+ein selbstsigniertes oder abgelaufenes Zertifikat deutet auf ein nachlässig betriebenes Gerät hin.
 - IP-Adressen: Geolokalisierung ist ungenau. Der Netzinhaber ist meist ein Provider oder Hoster, \
 nicht die handelnde Person. Nenne bei Missbrauch den Abuse-Kontakt aus RDAP. Ein Eintrag nur in der \
 Spamhaus-PBL bedeutet keinen Missbrauch.
@@ -55,7 +61,12 @@ Spamhaus-PBL bedeutet keinen Missbrauch.
 
 def build_prompt(kind, query, sources):
     label = {"phone": "die Rufnummer", "ip": "die IP-Adresse", "host": "den Hostnamen"}[kind]
-    data = json.dumps(sources, ensure_ascii=False, separators=(",", ":"), default=str)
+    parts = []
+    for source in sources:
+        text = json.dumps(source, ensure_ascii=False, separators=(",", ":"), default=str)
+        cap = SEARCH_SOURCE_CHARS if source["source"].startswith(("Websuche", "Spam-Portale")) else SOURCE_CHARS
+        parts.append(text if len(text) <= cap else text[:cap] + "…(gekürzt)")
+    data = "[" + ",\n".join(parts) + "]"
     if len(data) > MAX_DATA_CHARS:
         data = data[:MAX_DATA_CHARS] + "\n… (gekürzt)"
     return f"Heutiges Datum: {date.today():%d.%m.%Y}\nAnalysiere {label} {query}.\n\nRohdaten je Quelle (JSON):\n{data}"
