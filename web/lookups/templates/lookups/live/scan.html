@@ -1,0 +1,28 @@
+{% if scan %}
+  <h2>Portscan: offene Ports</h2>
+  <p class="muted">{{ scan.anzahl_offen }} offen · {{ scan.gefiltert }} gefiltert · {{ scan.geschlossen }} geschlossen
+    · {{ scan.profil }}{% if scan.dauer_s %} · {{ scan.dauer_s|floatformat:0 }} s{% endif %}</p>
+  {% if scan.auffaellig %}
+  <div class="card flags">
+    <strong>Auffällig</strong>
+    <ul>
+      {% for f in scan.auffaellig %}
+        <li><span class="risk risk-{{ f.stufe }}">{{ f.stufe }}</span> <b>Port {{ f.port }}</b>: {{ f.hinweis }}</li>
+      {% endfor %}
+    </ul>
+  </div>
+  {% endif %}
+  {% if scan.offen %}
+  <div class="table-wrap keep">
+  <table class="ports">
+    <thead><tr><th>Port</th><th>Dienst</th><th>Produkt und Version</th></tr></thead>
+    <tbody>
+    {% for p in scan.offen %}
+      <tr><td>{{ p.port }}/{{ p.proto }}</td><td>{{ p.dienst|default:"–" }}{% if p.tunnel %} ({{ p.tunnel }}){% endif %}</td>
+          <td>{{ p.produkt|default:"" }} {{ p.version|default:"" }} {{ p.zusatz|default:"" }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% endif %}
+{% endif %}

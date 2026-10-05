@@ -11,17 +11,18 @@ from django.views.decorators.cache import cache_control, never_cache
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST
 
-from . import pdf
+from . import ownership, pdf
 from .detect import detect, extract, vcard_text
 from .models import Lookup
-from .templatetags.report_tags import fundstellen
+from .templatetags.report_tags import fundstellen, scan_data
 from .tasks import run_lookup
 
 
-def _start(request, kind, query, active=False):
+def _start(request, kind, query, active=False, scan=False):
     # Direkter Kontakt zu fremden Zielen nur für Admins: Er geht von der Adresse dieses Servers aus.
     lookup = Lookup.objects.create(
-        kind=kind, query=query, created_by=request.user, active_probe=bool(active and request.user.is_staff)
+        kind=kind, query=query, created_by=request.user,
+        active_probe=bool(active and request.user.is_staff), port_scan=bool(scan and request.user.is_staff),
     )
     transaction.on_commit(lambda: run_lookup.delay(lookup.pk))
     return redirect("lookups:detail", pk=lookup.pk)
@@ -50,7 +51,11 @@ def index(request):
         kind, value = detect(query)
     except ValueError as exc:
         return _index(request, q=query, error=str(exc))
-    return _start(request, kind, value, active=request.POST.get("active") == "on")
+    scan = request.POST.get("scan") == "on" and request.user.is_staff and kind != "phone"
+    if scan and not ownership.is_owned(kind, value):
+        return _index(request, q=query, error=f"„{value}“ ist nicht als eigenes System eingetragen. "
+                                              "Der Portscan ist nur für eigene Systeme erlaubt.")
+    return _start(request, kind, value, active=request.POST.get("active") == "on", scan=scan)
 
 
 @csrf_exempt  # verändert nichts, füllt nur das Formular vor; POST kommt vom Teilen-Menü ohne Token
@@ -71,7 +76,7 @@ def share(request):
     return _index(request, q=candidate or "", error=error, shared=shared[:500])
 
 
-FRAGMENTS = ("meta", "progress", "error", "report", "hits", "actions")
+FRAGMENTS = ("meta", "progress", "error", "report", "scan", "hits", "actions")
 
 
 def _rev(lookup):
@@ -82,7 +87,8 @@ def _rev(lookup):
 def _fragments(request, lookup):
     """Teile der Detailseite als HTML samt Hash. Die Seite und der Status-Abruf nutzen dieselben
     Vorlagen; der Browser ersetzt nur Teile, deren Hash sich geändert hat."""
-    context = {"lookup": lookup, "hits": fundstellen(lookup.sources), "count": len(lookup.sources)}
+    context = {"lookup": lookup, "hits": fundstellen(lookup.sources), "count": len(lookup.sources),
+               "scan": scan_data(lookup.sources)}
 
     def part(html):
         return {"html": html, "h": hashlib.sha1(html.encode()).hexdigest()[:12]}
@@ -127,7 +133,7 @@ def report_pdf(request, pk):
 @require_POST
 def rerun(request, pk):
     lookup = get_object_or_404(_visible(request), pk=pk)
-    return _start(request, lookup.kind, lookup.query, active=lookup.active_probe)
+    return _start(request, lookup.kind, lookup.query, active=lookup.active_probe, scan=lookup.port_scan)
 
 
 @login_not_required

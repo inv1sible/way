@@ -53,6 +53,13 @@ Gemeinsam genutzte Infrastruktur (Cloud, CDN, große Provider) taucht oft in Lis
 verraten Mail- und Hosting-Anbieter. "TLS-Zertifikat" und "Web-Kopfzeilen" stammen aus direktem Kontakt \
 mit dem Ziel: Zertifikatsinhaber, alternative Namen und Seitentitel sind starke Hinweise auf den Betreiber; \
 ein selbstsigniertes oder abgelaufenes Zertifikat deutet auf ein nachlässig betriebenes Gerät hin.
+- "Portscan" gibt es nur für eigene Systeme des Nutzers: Bewerte die Angriffsfläche. Auffällig sind \
+Dienste, die nicht aus dem Internet erreichbar sein sollten (Telnet, FTP, SMB, RDP, VNC, Datenbanken, \
+Redis, Docker-/Admin-Schnittstellen) und veraltete Versionen. Nenne konkrete Maßnahmen (Port per Firewall \
+schließen, Dienst aktualisieren). Das Feld "auffaellig" nennt Ports mit bekanntem Risiko und Hinweis: \
+Gib sie wörtlich unter den Erkenntnissen an; ist es nicht leer, ist das Risiko mindestens "mittel", bei \
+Stufe "hoch" "hoch". Wenige offene Standardports (80/443) sind normal. "gefiltert" heißt, \
+dass eine Firewall Verbindungen verwirft.
 - IP-Adressen: Geolokalisierung ist ungenau. Der Netzinhaber ist meist ein Provider oder Hoster, \
 nicht die handelnde Person. Nenne bei Missbrauch den Abuse-Kontakt aus RDAP. Ein Eintrag nur in der \
 Spamhaus-PBL bedeutet keinen Missbrauch.
@@ -70,6 +77,31 @@ def build_prompt(kind, query, sources):
     if len(data) > MAX_DATA_CHARS:
         data = data[:MAX_DATA_CHARS] + "\n… (gekürzt)"
     return f"Heutiges Datum: {date.today():%d.%m.%Y}\nAnalysiere {label} {query}.\n\nRohdaten je Quelle (JSON):\n{data}"
+
+
+RISK_ORDER = {"": 0, "unklar": 0, "niedrig": 1, "mittel": 2, "hoch": 3}
+
+
+def risk_floor(sources):
+    """Mindestrisiko aus den als auffällig markierten offenen Ports; das Sprachmodell stuft
+    Portscans erfahrungsgemäß zu milde ein."""
+    levels = {
+        item.get("stufe")
+        for source in sources or []
+        if source.get("source", "").startswith("Portscan") and source.get("ok")
+        for item in source["data"].get("auffaellig", [])
+    }
+    return "hoch" if "hoch" in levels else "mittel" if levels else ""
+
+
+def apply_risk_floor(report, risk, sources):
+    floor = risk_floor(sources)
+    if not floor or RISK_ORDER.get(risk, 0) >= RISK_ORDER[floor]:
+        return report, risk
+    note = f"Risiko: {floor} (angehoben wegen offener Ports mit erhöhtem Risiko, siehe Portscan)"
+    if RISK_RE.search(report or ""):
+        return RISK_RE.sub(note, report, count=1), floor
+    return f"{report}\n\n{note}", floor
 
 
 def extract_risk(text):

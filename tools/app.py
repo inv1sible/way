@@ -7,6 +7,10 @@ Dienst nicht gegen interne Systeme missbraucht werden kann.
 
 Stufe 0 (nur Registries und DNS, kein Kontakt zum Ziel): whois, asn, dns
 Stufe 1 (ein normaler Zugriff auf das Ziel, taucht in dessen Log auf): tls, web
+Stufe 2 (Portscan, nur für eigene Systeme): scan
+
+Ob ein Ziel scannen darf, entscheidet die Anwendung anhand der Liste "Eigene Systeme"; dieser Dienst
+begrenzt nur das Wie: ausschließlich öffentliche Adressen, festes Profil, ein Scan zur Zeit.
 """
 
 import hmac
@@ -19,6 +23,8 @@ import subprocess
 import sys
 import tempfile
 import threading
+import time
+import xml.etree.ElementTree as ET
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -348,7 +354,118 @@ def tool_web(params):
     }
 
 
-TOOLS = {"whois": tool_whois, "asn": tool_asn, "dns": tool_dns, "tls": tool_tls, "web": tool_web}
+# --- Portscan (Stufe 2, nur eigene Systeme) --------------------------------------------------
+
+SCAN_SLOT = threading.BoundedSemaphore(1)
+SCAN_PROFILE = "Top-1000-TCP-Ports, Verbindungs-Scan (-sT), Diensterkennung leicht"
+
+
+# Offene Ports mit bekanntem Risiko, wenn sie aus dem Internet erreichbar sind: (Stufe, Hinweis).
+PORT_HINTS = {
+    21: ("hoch", "FTP überträgt Passwörter unverschlüsselt"),
+    22: ("mittel", "SSH aus dem Internet erreichbar: nur Schlüssel-Login zulassen, Passwort-Login abschalten, "
+                   "Zugriff möglichst per VPN oder Firewall begrenzen"),
+    23: ("hoch", "Telnet ist unverschlüsselt und veraltet"),
+    25: ("mittel", "SMTP offen: eigener Mailserver? Offenes Relay prüfen"),
+    110: ("mittel", "POP3 unverschlüsselt"),
+    111: ("hoch", "rpcbind/portmapper gehört nicht ins Internet"),
+    135: ("hoch", "Windows-RPC gehört nicht ins Internet"),
+    139: ("hoch", "NetBIOS gehört nicht ins Internet"),
+    143: ("mittel", "IMAP unverschlüsselt"),
+    445: ("hoch", "SMB-Dateifreigabe gehört nicht ins Internet"),
+    548: ("mittel", "AFP-Dateifreigabe"),
+    631: ("mittel", "CUPS-Druckdienst"),
+    873: ("hoch", "rsync offen"),
+    1433: ("hoch", "Microsoft SQL Server offen"),
+    1521: ("hoch", "Oracle-Datenbank offen"),
+    1883: ("mittel", "MQTT unverschlüsselt"),
+    2049: ("hoch", "NFS offen"),
+    2375: ("hoch", "Docker-API ohne TLS: Vollzugriff auf den Host"),
+    3306: ("hoch", "MySQL/MariaDB offen"),
+    3389: ("hoch", "Remote Desktop (RDP) aus dem Internet"),
+    5060: ("mittel", "SIP offen"),
+    5432: ("hoch", "PostgreSQL offen"),
+    5900: ("hoch", "VNC offen"),
+    5984: ("hoch", "CouchDB offen"),
+    6379: ("hoch", "Redis offen, meist ohne Anmeldung"),
+    6789: ("mittel", "Wird u. a. von Ubiquiti UniFi (Speedtest) und IBM DB2-Admin genutzt: Zweck prüfen"),
+    7547: ("mittel", "TR-069 Router-Fernwartung"),
+    8080: ("mittel", "Webdienst auf Alternativport, oft eine Verwaltungsoberfläche (z. B. UniFi, Tomcat, Router)"),
+    8291: ("mittel", "MikroTik Winbox"),
+    8443: ("mittel", "HTTPS auf Alternativport, oft eine Verwaltungsoberfläche (z. B. UniFi, Tomcat, Router)"),
+    8728: ("mittel", "MikroTik API"),
+    9100: ("mittel", "Druckerport"),
+    9200: ("hoch", "Elasticsearch offen"),
+    10000: ("mittel", "Webmin-Verwaltungsoberfläche"),
+    11211: ("hoch", "Memcached offen"),
+    27017: ("hoch", "MongoDB offen"),
+}
+
+
+def flag_ports(open_ports):
+    flagged = []
+    for entry in open_ports:
+        hint = PORT_HINTS.get(entry["port"]) or (PORT_HINTS[5900] if 5901 <= entry["port"] <= 5902 else None)
+        if hint:
+            flagged.append({"port": entry["port"], "stufe": hint[0], "hinweis": hint[1]})
+    return flagged
+
+
+def parse_nmap(xml_text):
+    root = ET.fromstring(xml_text)
+    host = root.find("host")
+    if host is None:
+        return {"hinweis": "nmap hat keinen Host gemeldet."}
+    ports_el = host.find("ports")
+    open_ports, counts = [], {}
+    for extra in (ports_el.findall("extraports") if ports_el is not None else []):
+        counts[extra.get("state", "?")] = counts.get(extra.get("state", "?"), 0) + int(extra.get("count", 0))
+    for port in (ports_el.findall("port") if ports_el is not None else []):
+        state = port.find("state").get("state", "?")
+        if state != "open":
+            counts[state] = counts.get(state, 0) + 1
+            continue
+        service = port.find("service")
+        attrs = service.attrib if service is not None else {}
+        open_ports.append({
+            "port": int(port.get("portid")),
+            "proto": port.get("protocol"),
+            "dienst": attrs.get("name"),
+            "produkt": attrs.get("product"),
+            "version": attrs.get("version"),
+            "zusatz": attrs.get("extrainfo"),
+            "tunnel": attrs.get("tunnel"),
+        })
+    finished = root.find("runstats/finished")
+    open_ports.sort(key=lambda e: e["port"])
+    return {
+        "profil": SCAN_PROFILE,
+        "offen": [{k: v for k, v in entry.items() if v} for entry in open_ports],
+        "auffaellig": flag_ports(open_ports),
+        "anzahl_offen": len(open_ports),
+        "geschlossen": counts.get("closed", 0),
+        "gefiltert": counts.get("filtered", 0),
+        "dauer_s": float(finished.get("elapsed")) if finished is not None and finished.get("elapsed") else None,
+    }
+
+
+def tool_scan(params):
+    addr = public_ip(params.get("ip", ""))
+    if not SCAN_SLOT.acquire(timeout=5):
+        raise RuntimeError("Es läuft bereits ein Portscan; bitte später erneut versuchen")
+    try:
+        # --unprivileged: Verbindungs-Scan ohne Raw-Sockets (der Container hat keine Capabilities)
+        cmd = ["nmap", "--unprivileged", "-sT", "-Pn", "-n", "--top-ports", "1000", "-sV", "--version-intensity", "2",
+               "--max-retries", "1", "--host-timeout", "240s"] + (["-6"] if addr.version == 6 else [])
+        out, err, code = run(cmd + ["-oX", "-", str(addr)], 270)
+    finally:
+        SCAN_SLOT.release()
+    if code != 0 or "<nmaprun" not in out:
+        raise RuntimeError("nmap fehlgeschlagen: " + (err.strip() or f"Exit-Code {code}")[:300])
+    return {"ziel": str(addr), **parse_nmap(out)}
+
+
+TOOLS = {"whois": tool_whois, "asn": tool_asn, "dns": tool_dns, "tls": tool_tls, "web": tool_web, "scan": tool_scan}
 
 
 # --- HTTP-Schnittstelle ----------------------------------------------------------------------

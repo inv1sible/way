@@ -27,7 +27,7 @@ async def resolve(host):
     return data
 
 
-async def collect(client, host, active=False):
+async def collect(client, host, active=False, scan=False):
     domain_jobs = [(f"{name} (Hostname)", fn, *args) for name, fn, *args in threatintel.jobs(client, host, "domain")]
     domain_jobs += [("DNS-Einträge (dig)", tools.dns, client, host), ("WHOIS Domain (lokal)", tools.whois, client, host)]
     dns, domain_results = await asyncio.gather(
@@ -38,5 +38,5 @@ async def collect(client, host, active=False):
     if dns["ok"] and dns["data"]["adressen"]:
         target = dns["data"]["adressen"][0]
         dns["data"]["analysierte_adresse"] = target
-        results += await ip.collect(client, target, active=active, sni=host)
+        results += await ip.collect(client, target, active=active, sni=host, scan=scan)
     return results

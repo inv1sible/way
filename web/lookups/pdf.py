@@ -5,6 +5,8 @@ import re
 from django.template.loader import render_to_string
 from django.utils import timezone
 from weasyprint import HTML
+
+from .templatetags.report_tags import scan_data
 from weasyprint.urls import URLFetcher
 
 
@@ -29,7 +31,7 @@ def filename(lookup):
 def render(lookup, request):
     html = render_to_string(
         "lookups/report_pdf.html",
-        {"lookup": lookup, "generated_at": timezone.now()},
+        {"lookup": lookup, "generated_at": timezone.now(), "scan": scan_data(lookup.sources)},
         request=request,
     )
     return HTML(string=html, url_fetcher=BlockingFetcher(allowed_protocols=())).write_pdf()

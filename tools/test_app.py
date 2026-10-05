@@ -55,7 +55,7 @@ class TargetChecks(unittest.TestCase):
 
     def test_private_ip_is_refused_by_every_tool(self):
         for name, params in (("tls", {"ip": "192.168.1.1"}), ("web", {"ip": "127.0.0.1"}), ("asn", {"ip": "10.0.0.1"}),
-                             ("whois", {"target": "172.16.0.1"})):
+                             ("whois", {"target": "172.16.0.1"}), ("scan", {"ip": "192.168.1.139"})):
             with self.assertRaises(app.Refused, msg=name):
                 app.TOOLS[name](params)
 
@@ -65,6 +65,26 @@ class Parsers(unittest.TestCase):
         self.assertEqual(app.cymru_name(app.parse_ip("1.2.3.4")), "4.3.2.1.origin.asn.cymru.com")
         v6 = app.cymru_name(app.parse_ip("2001:db8::1"))
         self.assertTrue(v6.startswith("1.0.0.0.") and v6.endswith(".8.b.d.0.1.0.0.2.origin6.asn.cymru.com"), v6)
+
+    def test_parse_nmap(self):
+        xml = """<?xml version="1.0"?><nmaprun><host><status state="up"/><address addr="203.0.113.5"/>
+          <ports><extraports state="filtered" count="996"/>
+            <port protocol="tcp" portid="443"><state state="open"/><service name="http" product="nginx" tunnel="ssl"/></port>
+            <port protocol="tcp" portid="22"><state state="open"/><service name="ssh" product="OpenSSH" version="9.2p1" extrainfo="protocol 2.0"/></port>
+            <port protocol="tcp" portid="3306"><state state="closed"/><service name="mysql"/></port>
+            <port protocol="tcp" portid="23"><state state="closed"/></port>
+          </ports></host><runstats><finished elapsed="31.42"/></runstats></nmaprun>"""
+        result = app.parse_nmap(xml)
+        self.assertEqual([p["port"] for p in result["offen"]], [22, 443])
+        self.assertEqual(result["offen"][0], {"port": 22, "proto": "tcp", "dienst": "ssh", "produkt": "OpenSSH",
+                                              "version": "9.2p1", "zusatz": "protocol 2.0"})
+        self.assertEqual((result["anzahl_offen"], result["gefiltert"], result["geschlossen"]), (2, 996, 2))
+        self.assertEqual(result["dauer_s"], 31.42)
+        self.assertEqual([(f["port"], f["stufe"]) for f in result["auffaellig"]], [(22, "mittel")])  # 443 ist normal
+
+    def test_flag_ports_levels(self):
+        flagged = app.flag_ports([{"port": p} for p in (80, 443, 3389, 5901, 8443, 6379)])
+        self.assertEqual({f["port"]: f["stufe"] for f in flagged}, {3389: "hoch", 5901: "hoch", 8443: "mittel", 6379: "hoch"})
 
     def test_parse_dig_joins_split_txt_and_drops_empty(self):
         out = '"v=spf1 include:a.example " "~all"\n""\n;; Kommentar\n"v=DMARC1;p=none"\n'

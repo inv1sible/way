@@ -11,6 +11,9 @@
   <label class="check opt"><input type="checkbox" name="active">
     <span>Leise aktiv: TLS-Zertifikat und Web-Kopfzeilen direkt vom Ziel abrufen
       <span class="muted">(ein normaler Zugriff, erscheint im Log des Ziels)</span></span></label>
+  <label class="check opt"><input type="checkbox" name="scan">
+    <span>Portscan (nmap, Top-1000-Ports): nur für eigene Systeme
+      <span class="muted">(<a href="{% url 'admin:lookups_ownedtarget_changelist' %}">Liste verwalten</a>)</span></span></label>
   {% endif %}
 </form>
 {% if error %}<p class="error">{{ error }}</p>{% endif %}

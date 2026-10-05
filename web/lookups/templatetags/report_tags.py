@@ -42,3 +42,11 @@ def fundstellen(sources):
                     seen.add(url)
                     hits.append({**hit, "quelle": source["source"]})
     return hits
+
+
+def scan_data(sources):
+    """Ergebnis des Portscans, falls vorhanden und erfolgreich."""
+    for source in sources or []:
+        if source.get("source", "").startswith("Portscan") and source.get("ok"):
+            return source["data"]
+    return None

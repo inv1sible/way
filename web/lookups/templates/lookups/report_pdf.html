@@ -29,6 +29,9 @@
   .appendix { page-break-before: always; }
   .source { margin-bottom: 4mm; page-break-inside: auto; }
   .source h3 { font-size: 10pt; margin: 0 0 1mm; page-break-after: avoid; }
+  .flags { border: 0.5pt solid #d9dde3; padding: 2mm 3mm; margin: 2mm 0; }
+  .flags ul { margin: 1mm 0 0; padding-left: 4mm; }
+  table.ports th { width: auto; }
   .hits li { margin-bottom: 2mm; }
   .hits .url { color: #2557d6; font-size: 8pt; word-break: break-all; }
   .hits .snippet { color: #5d6673; font-size: 8.5pt; }
@@ -43,7 +46,7 @@
   <table>
     <tr><th>Typ</th><td>{{ lookup.get_kind_display }}</td></tr>
     <tr><th>Risikoeinschätzung</th><td>{% if lookup.risk %}<span class="risk risk-{{ lookup.risk }}">{{ lookup.risk }}</span>{% else %}–{% endif %}</td></tr>
-    <tr><th>Abfragestufe</th><td>{% if lookup.active_probe %}passiv und leise aktiv (direkter Kontakt zum Ziel){% else %}passiv{% endif %}</td></tr>
+    <tr><th>Abfragestufe</th><td>passiv{% if lookup.active_probe %}, leise aktiv (direkter Kontakt zum Ziel){% endif %}{% if lookup.port_scan %}, Portscan (eigenes System){% endif %}</td></tr>
     <tr><th>Status</th><td>{{ lookup.get_status_display }}</td></tr>
     <tr><th>Analyse gestartet</th><td>{{ lookup.created_at|date:"d.m.Y H:i:s" }}</td></tr>
     <tr><th>Abgeschlossen</th><td>{{ lookup.finished_at|date:"d.m.Y H:i:s"|default:"–" }}</td></tr>
@@ -59,6 +62,8 @@
     <p class="note">Der Bericht wurde automatisch von einem Sprachmodell aus den Rohdaten im Anhang erstellt
       und kann Fehler enthalten. Maßgeblich sind die Rohdaten der jeweiligen Quellen.</p>
   {% endif %}
+
+  {% include "lookups/live/scan.html" %}
 
   {% with hits=lookup.sources|fundstellen %}{% if hits %}
     <h2>Fundstellen im Web ({{ hits|length }})</h2>

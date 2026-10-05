@@ -9,14 +9,14 @@ from django.conf import settings
 from . import run_source
 
 
-async def call(client, tool, **params):
+async def call(client, tool, timeout=45, **params):
     if not settings.OSINT_TOOLS_TOKEN:
         raise RuntimeError("TOOLS_TOKEN ist nicht gesetzt")
     response = await client.post(
         f"{settings.OSINT_TOOLS_URL}/run",
         json={"tool": tool, **params},
         headers={"Authorization": f"Bearer {settings.OSINT_TOOLS_TOKEN}"},
-        timeout=45,
+        timeout=timeout,
     )
     try:
         body = response.json()
@@ -47,6 +47,10 @@ async def web(client, ip, sni=None, port=443):
     return await call(client, "web", ip=ip, port=port, **({"sni": sni} if sni else {}))
 
 
+async def scan(client, ip):
+    return await call(client, "scan", timeout=300, ip=ip)
+
+
 def passive_ip_jobs(client, ip):
     return [
         ("WHOIS (lokal)", whois, client, ip),
@@ -61,6 +65,11 @@ def active_ip_jobs(client, ip, sni=None):
         ("Web-Kopfzeilen (curl, Port 443)", web, client, ip, sni, 443),
         ("Web-Kopfzeilen (curl, Port 80)", web, client, ip, sni, 80),
     ]
+
+
+def scan_job(client, ip):
+    """Portscan (Stufe 2); nur für Ziele aus der Liste der eigenen Systeme."""
+    return ("Portscan (nmap, Top-1000-Ports)", scan, client, ip)
 
 
 async def run_jobs(jobs):

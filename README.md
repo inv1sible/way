@@ -51,11 +51,19 @@ docker compose run --rm -u "$(id -u)" -v "$PWD/web:/app" web python manage.py ma
 |---|---|---|
 | passiv (Standard) | keiner; nur Registries, DNS, Drittdienste | RDAP, WHOIS, ASN (dig/Team Cymru), DNS-Einträge, Reputationsdienste |
 | leise aktiv (nur Admins, Häkchen im Suchfeld) | ein normaler Zugriff, erscheint im Log des Ziels | TLS-Zertifikat (openssl), Web-Kopfzeilen (curl, Port 80 und 443) |
+| Portscan (nur Admins, nur eigene Systeme) | Verbindungsversuche auf 1000 Ports | nmap (`-sT`, Top-1000-TCP, leichte Diensterkennung); auffällige Ports werden fest bewertet und heben das Risiko an |
+
+**Eigene Systeme:** Der Portscan läuft nur für Ziele, die im Admin unter "Eigene Systeme" stehen (öffentliche
+IP, Netz bis /22 bzw. /56, oder exakter Hostname). Die Anwendung prüft das beim Absenden und noch einmal im
+Worker; der `tools`-Container selbst kennt die Liste nicht, begrenzt aber Ziel (nur öffentliche Adressen),
+Profil (fest) und Parallelität (ein Scan zur Zeit).
 
 Der `tools`-Container lehnt alles ab, was keine öffentliche Adresse ist (LAN, Loopback, Docker-Netz,
 Link-Local), und erlaubt nur die Ports 80, 443, 8080 und 8443. Er verbindet sich nur zu IP-Adressen,
-die der Worker bereits aufgelöst hat (kein DNS-Rebinding). Port-Scans (nmap) sind bewusst nicht enthalten.
+die der Worker bereits aufgelöst hat (kein DNS-Rebinding). Der Portscan ist Stufe 2 und nur für eigene Systeme freigegeben.
 
 ```sh
 docker compose run --rm --no-deps -e TOOLS_TOKEN=x tools python -m unittest -v   # Tests des tools-Dienstes
 ```
+
+Offene Punkte und Pläne (VPN, Opsec, weitere Quellen): siehe [TODO.md](TODO.md).

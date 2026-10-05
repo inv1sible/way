@@ -7,7 +7,7 @@ from django.conf import settings
 from django.db import connection
 from django.utils import timezone
 
-from . import llm
+from . import llm, ownership
 from .collectors import collect
 from .models import Lookup
 
@@ -25,7 +25,7 @@ def _save_sources(lookup_id, sources):
     connection.close()  # der Thread aus asyncio.to_thread behält sonst seine Verbindung
 
 
-async def _collect_with_progress(lookup):
+async def _collect_with_progress(lookup, scan=False):
     """Sammelt die Quellen und speichert jede, sobald sie fertig ist (Zwischenstand für die Oberfläche)."""
     lock, done = asyncio.Lock(), []
 
@@ -34,7 +34,7 @@ async def _collect_with_progress(lookup):
             done.append(result)
             await asyncio.to_thread(_save_sources, lookup.pk, list(done))
 
-    return await collect(lookup.kind, lookup.query, on_result=on_result, active=lookup.active_probe)
+    return await collect(lookup.kind, lookup.query, on_result=on_result, active=lookup.active_probe, scan=scan)
 
 
 @shared_task
@@ -42,14 +42,22 @@ def run_lookup(lookup_id):
     lookup = Lookup.objects.get(pk=lookup_id)
     try:
         _update(lookup, status=Lookup.Status.COLLECTING, model=settings.OSINT_OLLAMA_MODEL)
-        sources = asyncio.run(_collect_with_progress(lookup))
+        # Erlaubnis zum Scannen erst hier endgültig prüfen: Der Eintrag kann seit dem Absenden entfernt worden sein.
+        scan = lookup.port_scan and ownership.is_owned(lookup.kind, lookup.query)
+        sources = asyncio.run(_collect_with_progress(lookup, scan=scan))
+        if lookup.port_scan and not scan:
+            sources.append({
+                "source": "Portscan (nmap, Top-1000-Ports)", "ok": False,
+                "error": "Das Ziel ist nicht (mehr) als eigenes System eingetragen; der Scan wurde nicht ausgeführt.",
+            })
         _update(lookup, status=Lookup.Status.ANALYZING, sources=sources)
         report = llm.write_report(lookup.kind, lookup.query, sources)
+        report, risk = llm.apply_risk_floor(report, llm.extract_risk(report), sources)
         _update(
             lookup,
             status=Lookup.Status.DONE,
             report_md=report,
-            risk=llm.extract_risk(report),
+            risk=risk,
             finished_at=timezone.now(),
         )
     except Exception as exc:

@@ -10,7 +10,8 @@ from . import llm
 from .collectors import bnetza, host, ip, phone, threatintel
 from .collectors import tools as tools_client
 from .detect import detect, extract
-from .models import Lookup
+from .models import Lookup, OwnedTarget
+from . import ownership
 from .templatetags.report_tags import markdown
 
 
@@ -602,14 +603,15 @@ class ActiveProbeTests(TestCase):
         lookup = Lookup.objects.create(kind="ip", query="8.8.8.8", active_probe=True)
         seen = {}
 
-        async def fake_collect(kind, query, on_result=None, active=False):
-            seen["active"] = active
+        async def fake_collect(kind, query, on_result=None, **kwargs):
+            seen.update(kwargs)
             return []
 
         with mock.patch("lookups.tasks.collect", fake_collect), \
                 mock.patch("lookups.tasks.llm.write_report", return_value="Risiko: niedrig"):
             run_lookup(lookup.pk)
         self.assertTrue(seen["active"])
+        self.assertFalse(seen["scan"])
 
 
 class PromptBudgetTests(SimpleTestCase):
@@ -622,3 +624,168 @@ class PromptBudgetTests(SimpleTestCase):
         self.assertIn("kita.example", prompt)
         self.assertIn("gekürzt", prompt)
         self.assertLess(len(prompt), 6000)
+
+
+
+class OwnedTargetTests(TestCase):
+    def test_parse_accepts_public_hosts_and_small_networks(self):
+        self.assertEqual(ownership.parse(" 8.8.8.8 "), ("net", "8.8.8.8/32"))
+        self.assertEqual(ownership.parse("8.8.8.0/24"), ("net", "8.8.8.0/24"))
+        self.assertEqual(ownership.parse("Mein.Server.Example.ORG."), ("host", "mein.server.example.org"))
+
+    def test_parse_rejects_private_huge_and_garbage(self):
+        from django.core.exceptions import ValidationError
+        for value in ("192.168.1.0/24", "10.0.0.5", "127.0.0.1", "8.0.0.0/8", "0.0.0.0/0", "::/0", "localhost", "a b", ""):
+            with self.assertRaises(ValidationError, msg=value):
+                ownership.parse(value)
+
+    def test_is_owned(self):
+        OwnedTarget.objects.create(value="8.8.8.0/24")
+        OwnedTarget.objects.create(value="Mein.Example.org")
+        self.assertTrue(ownership.is_owned("ip", "8.8.8.8"))
+        self.assertFalse(ownership.is_owned("ip", "8.8.9.8"))
+        self.assertTrue(ownership.is_owned("host", "mein.example.org"))
+        self.assertFalse(ownership.is_owned("host", "sub.mein.example.org"))  # keine Subdomains
+        self.assertFalse(ownership.is_owned("phone", "+4930123456"))
+
+
+class PortScanTests(TestCase):
+    def setUp(self):
+        self.staff = get_user_model().objects.create_user("chef", password="x", is_staff=True)
+        self.normal = get_user_model().objects.create_user("anna", password="x")
+        OwnedTarget.objects.create(value="8.8.8.8")
+
+    def _submit(self, user, q="8.8.8.8", **extra):
+        self.client.force_login(user)
+        with mock.patch("lookups.views.run_lookup.delay"), self.captureOnCommitCallbacks(execute=True):
+            return self.client.post(reverse("lookups:index"), {"q": q, **extra})
+
+    def test_staff_can_scan_own_system(self):
+        self._submit(self.staff, scan="on")
+        self.assertTrue(Lookup.objects.get().port_scan)
+
+    def test_foreign_target_is_refused_without_creating_a_lookup(self):
+        response = self._submit(self.staff, q="1.1.1.1", scan="on")
+        self.assertContains(response, "nicht als eigenes System eingetragen", status_code=400)
+        self.assertFalse(Lookup.objects.exists())
+
+    def test_normal_users_cannot_scan_and_phones_never(self):
+        self._submit(self.normal, scan="on")
+        self.assertFalse(Lookup.objects.get().port_scan)
+        Lookup.objects.all().delete()
+        self._submit(self.staff, q="030 1234567", scan="on")
+        self.assertFalse(Lookup.objects.get().port_scan)
+
+    def test_form_offers_scan_only_to_staff(self):
+        self.client.force_login(self.staff)
+        self.assertContains(self.client.get(reverse("lookups:index")), 'name="scan"')
+        self.client.force_login(self.normal)
+        self.assertNotContains(self.client.get(reverse("lookups:index")), 'name="scan"')
+
+    def test_task_rechecks_ownership_and_skips_scan(self):
+        from .tasks import run_lookup
+        lookup = Lookup.objects.create(kind="ip", query="1.1.1.1", port_scan=True)  # nicht in der Liste
+        seen = {}
+
+        async def fake_collect(kind, query, on_result=None, **kwargs):
+            seen.update(kwargs)
+            return []
+
+        with mock.patch("lookups.tasks.collect", fake_collect), \
+                mock.patch("lookups.tasks.llm.write_report", return_value="Risiko: niedrig"):
+            run_lookup(lookup.pk)
+        lookup.refresh_from_db()
+        self.assertFalse(seen["scan"])
+        self.assertIn("nicht (mehr) als eigenes System", lookup.sources[-1]["error"])
+
+    def test_task_scans_owned_target(self):
+        from .tasks import run_lookup
+        lookup = Lookup.objects.create(kind="ip", query="8.8.8.8", port_scan=True)
+        seen = {}
+
+        async def fake_collect(kind, query, on_result=None, **kwargs):
+            seen.update(kwargs)
+            return []
+
+        with mock.patch("lookups.tasks.collect", fake_collect), \
+                mock.patch("lookups.tasks.llm.write_report", return_value="Risiko: niedrig"):
+            run_lookup(lookup.pk)
+        self.assertTrue(seen["scan"])
+
+    def test_scan_job_only_when_requested_and_long_timeout(self):
+        names = []
+
+        async def fake_run_source(name, fn, *args):
+            names.append(name)
+            return {"source": name, "ok": True, "data": {}}
+
+        for scan in (False, True):
+            names.clear()
+            with mock.patch.object(ip, "run_source", fake_run_source):
+                asyncio.run(ip.collect(None, "8.8.8.8", scan=scan))
+            self.assertEqual(any(n.startswith("Portscan") for n in names), scan)
+
+    @override_settings(OSINT_TOOLS_URL="http://tools:8000", OSINT_TOOLS_TOKEN="t")
+    def test_scan_call_waits_long_enough(self):
+        import httpx
+        seen = {}
+
+        def handler(request):
+            seen["timeout"] = request.extensions["timeout"]["read"]
+            return httpx.Response(200, json={"ok": True, "data": {"offen": []}})
+
+        async def go():
+            async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+                return await tools_client.scan(client, "8.8.8.8")
+
+        self.assertEqual(asyncio.run(go()), {"offen": []})
+        self.assertEqual(seen["timeout"], 300)
+
+
+class RiskFloorTests(SimpleTestCase):
+    SCAN_MITTEL = [{"source": "Portscan (nmap, Top-1000-Ports)", "ok": True,
+                    "data": {"auffaellig": [{"port": 22, "stufe": "mittel", "hinweis": "SSH"}]}}]
+    SCAN_HOCH = [{"source": "Portscan (nmap, Top-1000-Ports)", "ok": True,
+                  "data": {"auffaellig": [{"port": 22, "stufe": "mittel"}, {"port": 6379, "stufe": "hoch"}]}}]
+
+    def test_low_risk_is_raised_and_text_adjusted(self):
+        report, risk = llm.apply_risk_floor("## Risikoeinschätzung\nRisiko: niedrig\nAlles gut.", "niedrig", self.SCAN_HOCH)
+        self.assertEqual(risk, "hoch")
+        self.assertIn("Risiko: hoch (angehoben wegen offener Ports", report)
+        self.assertNotIn("Risiko: niedrig", report)
+
+    def test_higher_model_risk_is_kept(self):
+        report, risk = llm.apply_risk_floor("Risiko: hoch\nx", "hoch", self.SCAN_MITTEL)
+        self.assertEqual((report, risk), ("Risiko: hoch\nx", "hoch"))
+
+    def test_without_scan_or_findings_nothing_changes(self):
+        for sources in ([], [{"source": "Portscan (nmap, Top-1000-Ports)", "ok": True, "data": {"auffaellig": []}}],
+                        [{"source": "Portscan (nmap, Top-1000-Ports)", "ok": False, "error": "x"}]):
+            self.assertEqual(llm.apply_risk_floor("Risiko: niedrig", "niedrig", sources), ("Risiko: niedrig", "niedrig"))
+
+    def test_missing_risk_line_gets_note_appended(self):
+        report, risk = llm.apply_risk_floor("Bericht ohne Zeile", "", self.SCAN_MITTEL)
+        self.assertEqual(risk, "mittel")
+        self.assertTrue(report.endswith("siehe Portscan)"))
+
+
+class ScanDisplayTests(TestCase):
+    def test_detail_and_pdf_show_open_ports_and_flags(self):
+        user = get_user_model().objects.create_user("anna", password="x")
+        lookup = Lookup.objects.create(
+            kind="ip", query="8.8.8.8", created_by=user, status=Lookup.Status.DONE, port_scan=True,
+            sources=[{"source": "Portscan (nmap, Top-1000-Ports)", "ok": True, "data": {
+                "profil": "Top-1000", "anzahl_offen": 2, "gefiltert": 0, "geschlossen": 998, "dauer_s": 31.4,
+                "offen": [{"port": 22, "proto": "tcp", "dienst": "ssh", "produkt": "OpenSSH", "version": "8.4p1"},
+                          {"port": 443, "proto": "tcp", "dienst": "https", "tunnel": "ssl"}],
+                "auffaellig": [{"port": 22, "stufe": "mittel", "hinweis": "SSH aus dem Internet erreichbar"}],
+            }}],
+        )
+        self.client.force_login(user)
+        page = self.client.get(reverse("lookups:detail", args=[lookup.pk]))
+        self.assertContains(page, "SSH aus dem Internet erreichbar")
+        self.assertContains(page, "OpenSSH 8.4p1")
+        self.assertContains(page, "· Portscan")
+        pdf_response = self.client.get(reverse("lookups:pdf", args=[lookup.pk]))
+        self.assertEqual(pdf_response["Content-Type"], "application/pdf")
+        self.assertIn("scan", self.client.get(reverse("lookups:status", args=[lookup.pk])).json()["fragments"])

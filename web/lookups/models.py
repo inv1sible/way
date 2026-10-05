@@ -32,6 +32,10 @@ class Lookup(models.Model):
     sources = models.JSONField("Rohdaten", default=list, blank=True)
     report_md = models.TextField("Bericht", blank=True)
     error = models.TextField("Fehler", blank=True)
+    port_scan = models.BooleanField(
+        "Portscan", default=False,
+        help_text="nmap-Portscan; nur für Ziele aus der Liste der eigenen Systeme.",
+    )
     active_probe = models.BooleanField(
         "leise aktiv", default=False,
         help_text="Ziel direkt kontaktieren (TLS-Zertifikat, Web-Kopfzeilen); erscheint im Log des Ziels.",
@@ -48,3 +52,33 @@ class Lookup(models.Model):
     @property
     def is_running(self):
         return self.status in (self.Status.PENDING, self.Status.COLLECTING, self.Status.ANALYZING)
+
+
+class OwnedTarget(models.Model):
+    """Eigene Systeme: Nur für diese ist der Portscan erlaubt. Eintrag ist eine öffentliche
+    IP-Adresse, ein kleines Netz (höchstens /22 bzw. /56) oder ein Hostname."""
+
+    value = models.CharField(
+        "Adresse oder Hostname", max_length=255, unique=True,
+        help_text="z. B. 203.0.113.7, 203.0.113.0/24 oder meinserver.example.org. "
+                  "Hostnamen gelten nur exakt (keine Subdomains).",
+    )
+    note = models.CharField("Notiz", max_length=200, blank=True)
+    created_at = models.DateTimeField("eingetragen", auto_now_add=True)
+
+    class Meta:
+        ordering = ["value"]
+        verbose_name = "Eigenes System"
+        verbose_name_plural = "Eigene Systeme"
+
+    def __str__(self):
+        return self.value
+
+    def clean(self):
+        from .ownership import parse
+
+        self.value = parse(self.value)[1]
+
+    def save(self, *args, **kwargs):
+        self.clean()
+        super().save(*args, **kwargs)

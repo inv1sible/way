@@ -135,3 +135,11 @@ button.secondary { background: var(--surface); color: var(--accent); border: 1px
 
 .opt { margin-top: 10px; align-items: flex-start; font-size: .9rem; }
 .opt input { margin-top: 3px; flex: none; }
+
+.flags ul { margin: 6px 0 0; padding-left: 18px; }
+.flags li { margin: 4px 0; }
+
+/* Portscan-Tabelle bleibt auch mobil eine Tabelle: Zellen umbrechen statt über den Rand zu laufen */
+table.ports td, table.ports th { white-space: normal; word-break: break-word; }
+@media (max-width: 640px) { .table-wrap.keep { overflow-x: auto; } }
+table.ports td:first-child { white-space: nowrap; }
