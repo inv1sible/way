@@ -1,0 +1,4 @@
+{% load report_tags %}<details>
+  <summary>{{ s.source }}{% if not s.ok %} <span class="risk risk-hoch">Fehler</span>{% endif %}</summary>
+  {% if s.ok %}<pre>{{ s.data|pretty_json }}</pre>{% else %}<p class="error">{{ s.error }}</p>{% endif %}
+</details>

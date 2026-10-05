@@ -1,0 +1,1 @@
+{% if lookup.is_running %}<span class="spinner"></span> {{ lookup.get_status_display }} …{% if count %} ({{ count }} Quelle{{ count|pluralize:"n" }} abgefragt){% endif %}{% endif %}

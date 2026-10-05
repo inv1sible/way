@@ -2,7 +2,8 @@ import asyncio
 from unittest import mock
 
 from django.contrib.auth import get_user_model
-from django.test import SimpleTestCase, TestCase, override_settings
+from django.db import connection
+from django.test import SimpleTestCase, TestCase, TransactionTestCase, override_settings
 from django.urls import reverse
 
 from . import llm
@@ -393,3 +394,98 @@ class InterruptedLookupTests(TestCase):
         running.refresh_from_db(); queued.refresh_from_db()
         self.assertEqual(running.status, Lookup.Status.FAILED)
         self.assertEqual(queued.status, Lookup.Status.PENDING)  # steht noch in der Warteschlange
+
+
+class LiveUpdateTests(TestCase):
+    def setUp(self):
+        self.user = get_user_model().objects.create_user("anna", password="x")
+        self.lookup = Lookup.objects.create(
+            kind="ip", query="8.8.8.8", created_by=self.user, status=Lookup.Status.COLLECTING,
+            sources=[{"source": "Reverse DNS", "ok": True, "data": {"ptr": "dns.google"}}],
+        )
+        self.url = reverse("lookups:status", args=[self.lookup.pk])
+
+    def test_status_returns_fragments_and_sources(self):
+        self.client.force_login(self.user)
+        data = self.client.get(self.url).json()
+        self.assertTrue(data["running"])
+        self.assertEqual([s["key"] for s in data["sources"]], ["Reverse DNS"])
+        self.assertIn("1 Quelle abgefragt", data["fragments"]["progress"]["html"])
+        self.assertEqual(data["fragments"]["actions"]["html"].strip(), "")  # läuft noch: keine Buttons
+
+    def test_unchanged_revision_skips_rendering(self):
+        self.client.force_login(self.user)
+        rev = self.client.get(self.url).json()["rev"]
+        self.assertEqual(self.client.get(self.url, {"rev": rev}).json(), {"running": True, "rev": rev, "unchanged": True})
+
+    def test_new_source_and_finish_change_revision(self):
+        self.client.force_login(self.user)
+        rev = self.client.get(self.url).json()["rev"]
+        self.lookup.sources.append({"source": "RDAP", "ok": True, "data": {}})
+        self.lookup.save()
+        self.assertNotEqual(self.client.get(self.url, {"rev": rev}).json()["rev"], rev)
+        Lookup.objects.filter(pk=self.lookup.pk).update(status="done", report_md="## Kurzfazit\nok")
+        done = self.client.get(self.url).json()
+        self.assertFalse(done["running"])
+        self.assertIn("Kurzfazit", done["fragments"]["report"]["html"])
+        self.assertIn("Als PDF", done["fragments"]["actions"]["html"])
+
+    def test_other_user_and_anonymous_are_refused(self):
+        self.assertEqual(self.client.get(self.url).status_code, 302)
+        self.client.force_login(get_user_model().objects.create_user("ben", password="x"))
+        self.assertEqual(self.client.get(self.url).status_code, 404)
+
+    def test_detail_page_polls_only_while_running(self):
+        self.client.force_login(self.user)
+        running = self.client.get(reverse("lookups:detail", args=[self.lookup.pk]))
+        self.assertContains(running, 'data-running="1"')
+        self.assertContains(running, "lookups/live.")
+        Lookup.objects.filter(pk=self.lookup.pk).update(status="done")
+        done = self.client.get(reverse("lookups:detail", args=[self.lookup.pk]))
+        self.assertNotContains(done, 'data-running="1"')
+        self.assertNotContains(done, "lookups/live.")
+
+
+class ProgressTests(SimpleTestCase):
+    def test_run_source_reports_each_result(self):
+        from .collectors import _on_result, run_source
+        got = []
+
+        async def callback(result):
+            got.append((result["source"], result["ok"]))
+
+        async def go():
+            _on_result.set(callback)
+            await run_source("A", lambda: 1)
+            await run_source("B", lambda: 1 / 0)
+
+        asyncio.run(go())
+        self.assertEqual(got, [("A", True), ("B", False)])
+
+
+class IncrementalSaveTests(TransactionTestCase):
+    def test_sources_are_stored_as_they_finish(self):
+        from .tasks import run_lookup
+        lookup = Lookup.objects.create(kind="ip", query="8.8.8.8")
+        seen = []
+
+        def stored():
+            try:
+                return len(Lookup.objects.get(pk=lookup.pk).sources)
+            finally:
+                connection.close()  # sonst blockiert die offene Verbindung das Aufräumen der Test-Datenbank
+
+        async def fake_collect(kind, query, on_result=None):
+            await on_result({"source": "A", "ok": True, "data": 1})
+            seen.append(await asyncio.to_thread(stored))
+            await on_result({"source": "B", "ok": True, "data": 2})
+            seen.append(await asyncio.to_thread(stored))
+            return [{"source": "A", "ok": True, "data": 1}, {"source": "B", "ok": True, "data": 2}]
+
+        with mock.patch("lookups.tasks.collect", fake_collect), \
+                mock.patch("lookups.tasks.llm.write_report", return_value="## Kurzfazit\nRisiko: niedrig"):
+            run_lookup(lookup.pk)
+        lookup.refresh_from_db()
+        self.assertEqual(seen, [1, 2])
+        self.assertEqual(lookup.status, Lookup.Status.DONE)
+        self.assertEqual(len(lookup.sources), 2)

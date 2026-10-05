@@ -4,6 +4,7 @@ import logging
 from celery import shared_task
 from celery.signals import worker_ready
 from django.conf import settings
+from django.db import connection
 from django.utils import timezone
 
 from . import llm
@@ -19,12 +20,29 @@ def _update(lookup, **fields):
     lookup.save(update_fields=list(fields))
 
 
+def _save_sources(lookup_id, sources):
+    Lookup.objects.filter(pk=lookup_id).update(sources=sources)
+    connection.close()  # der Thread aus asyncio.to_thread behält sonst seine Verbindung
+
+
+async def _collect_with_progress(lookup):
+    """Sammelt die Quellen und speichert jede, sobald sie fertig ist (Zwischenstand für die Oberfläche)."""
+    lock, done = asyncio.Lock(), []
+
+    async def on_result(result):
+        async with lock:
+            done.append(result)
+            await asyncio.to_thread(_save_sources, lookup.pk, list(done))
+
+    return await collect(lookup.kind, lookup.query, on_result=on_result)
+
+
 @shared_task
 def run_lookup(lookup_id):
     lookup = Lookup.objects.get(pk=lookup_id)
     try:
         _update(lookup, status=Lookup.Status.COLLECTING, model=settings.OSINT_OLLAMA_MODEL)
-        sources = asyncio.run(collect(lookup.kind, lookup.query))
+        sources = asyncio.run(_collect_with_progress(lookup))
         _update(lookup, status=Lookup.Status.ANALYZING, sources=sources)
         report = llm.write_report(lookup.kind, lookup.query, sources)
         _update(

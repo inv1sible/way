@@ -1,16 +1,20 @@
+import hashlib
+
 from django.contrib.auth.decorators import login_not_required
 from django.db import transaction
 from django.http import HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
+from django.template.loader import render_to_string
 from django.templatetags.static import static
 from django.urls import reverse
-from django.views.decorators.cache import cache_control
+from django.views.decorators.cache import cache_control, never_cache
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST
 
 from . import pdf
 from .detect import detect, extract, vcard_text
 from .models import Lookup
+from .templatetags.report_tags import fundstellen
 from .tasks import run_lookup
 
 
@@ -64,8 +68,48 @@ def share(request):
     return _index(request, q=candidate or "", error=error, shared=shared[:500])
 
 
+FRAGMENTS = ("meta", "progress", "error", "report", "hits", "actions")
+
+
+def _rev(lookup):
+    """Billige Kennung des Zustands; stimmt sie mit der des Browsers überein, entfällt das Rendern."""
+    return f"{lookup.status}:{len(lookup.sources)}:{len(lookup.report_md)}:{lookup.risk}:{len(lookup.error)}:{lookup.model}"
+
+
+def _fragments(request, lookup):
+    """Teile der Detailseite als HTML samt Hash. Die Seite und der Status-Abruf nutzen dieselben
+    Vorlagen; der Browser ersetzt nur Teile, deren Hash sich geändert hat."""
+    context = {"lookup": lookup, "hits": fundstellen(lookup.sources), "count": len(lookup.sources)}
+
+    def part(html):
+        return {"html": html, "h": hashlib.sha1(html.encode()).hexdigest()[:12]}
+
+    return {
+        "fragments": {name: part(render_to_string(f"lookups/live/{name}.html", context, request=request))
+                      for name in FRAGMENTS},
+        "sources": [
+            {"key": source["source"], **part(render_to_string("lookups/live/source.html", {"s": source}))}
+            for source in lookup.sources
+        ],
+    }
+
+
 def detail(request, pk):
-    return render(request, "lookups/detail.html", {"lookup": get_object_or_404(_visible(request), pk=pk)})
+    lookup = get_object_or_404(_visible(request), pk=pk)
+    return render(request, "lookups/detail.html", {
+        "lookup": lookup, "rev": _rev(lookup), **_fragments(request, lookup),
+    })
+
+
+@never_cache
+def status(request, pk):
+    """Zwischenstand einer Analyse für die Detailseite (Abruf alle paar Sekunden)."""
+    lookup = get_object_or_404(_visible(request), pk=pk)
+    rev = _rev(lookup)
+    base = {"running": lookup.is_running, "rev": rev}
+    if request.GET.get("rev") == rev:
+        return JsonResponse({**base, "unchanged": True})
+    return JsonResponse({**base, **_fragments(request, lookup)})
 
 
 def report_pdf(request, pk):

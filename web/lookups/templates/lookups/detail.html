@@ -1,54 +1,29 @@
 {% extends "base.html" %}
-{% load report_tags %}
+{% load static %}
 {% block title %}{{ lookup.query }} · Who Are You{% endblock %}
-{% block head %}{% if lookup.is_running %}<meta http-equiv="refresh" content="3">{% endif %}{% endblock %}
+{% block head %}
+  {% if lookup.is_running %}
+    <script src="{% static 'lookups/live.js' %}" defer></script>
+    <noscript><meta http-equiv="refresh" content="5"></noscript>
+  {% endif %}
+{% endblock %}
 {% block content %}
 <p><a href="{% url 'lookups:index' %}">← Neue Abfrage</a></p>
 <h1>{{ lookup.query }}</h1>
-<p class="muted">
-  {{ lookup.get_kind_display }} · {{ lookup.created_at|date:"d.m.Y H:i" }}
-  {% if lookup.model %} · Modell {{ lookup.model }}{% endif %}
-  {% if lookup.risk %} · <span class="risk risk-{{ lookup.risk }}">Risiko {{ lookup.risk }}</span>{% endif %}
-</p>
 
-{% if lookup.is_running %}
-  <p class="progress"><span class="spinner"></span> {{ lookup.get_status_display }} …</p>
-{% endif %}
-{% if lookup.error %}<p class="error">{{ lookup.error }}</p>{% endif %}
+<div id="live" data-url="{% url 'lookups:status' lookup.pk %}" data-rev="{{ rev }}"{% if lookup.is_running %} data-running="1"{% endif %}>
+  <p class="muted" id="l-meta" data-h="{{ fragments.meta.h }}">{{ fragments.meta.html }}</p>
+  <div class="progress" id="l-progress" data-h="{{ fragments.progress.h }}">{{ fragments.progress.html }}</div>
+  <p class="muted" id="l-conn" hidden>Verbindung unterbrochen – neuer Versuch läuft …</p>
+  <div id="l-error" data-h="{{ fragments.error.h }}">{{ fragments.error.html }}</div>
+  <div id="l-report" data-h="{{ fragments.report.h }}">{{ fragments.report.html }}</div>
+  <div id="l-hits" data-h="{{ fragments.hits.h }}">{{ fragments.hits.html }}</div>
 
-{% if lookup.report_md %}
-  <article class="card report">{{ lookup.report_md|markdown }}</article>
-{% endif %}
-
-{% with hits=lookup.sources|fundstellen %}{% if hits %}
-  <h2>Fundstellen im Web ({{ hits|length }})</h2>
-  <ul class="hits">
-  {% for hit in hits %}
-    <li>
-      <a href="{{ hit.url }}" target="_blank" rel="noopener noreferrer nofollow">{{ hit.titel|default:hit.url }}</a>
-      <span class="muted hit-url">{{ hit.url|truncatechars:90 }}</span>
-      {% if hit.auszug %}<p>{{ hit.auszug }}</p>{% endif %}
-    </li>
-  {% endfor %}
-  </ul>
-{% endif %}{% endwith %}
-
-{% if lookup.sources %}
-  <h2>Rohdaten</h2>
-  {% for s in lookup.sources %}
-    <details>
-      <summary>{{ s.source }}{% if not s.ok %} <span class="risk risk-hoch">Fehler</span>{% endif %}</summary>
-      {% if s.ok %}<pre>{{ s.data|pretty_json }}</pre>{% else %}<p class="error">{{ s.error }}</p>{% endif %}
-    </details>
-  {% endfor %}
-{% endif %}
-
-{% if not lookup.is_running %}
-  <div class="actions">
-    <a class="button" href="{% url 'lookups:pdf' lookup.pk %}">Als PDF</a>
-    <form method="post" action="{% url 'lookups:rerun' lookup.pk %}">{% csrf_token %}
-      <button class="secondary">Erneut analysieren</button>
-    </form>
+  <h2 id="l-sources-h"{% if not sources %} hidden{% endif %}>Rohdaten</h2>
+  <div id="l-sources">
+    {% for s in sources %}<div class="src" data-key="{{ s.key }}" data-h="{{ s.h }}">{{ s.html }}</div>{% endfor %}
   </div>
-{% endif %}
+
+  <div id="l-actions" data-h="{{ fragments.actions.h }}">{{ fragments.actions.html }}</div>
+</div>
 {% endblock %}
