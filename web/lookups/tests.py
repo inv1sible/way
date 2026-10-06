@@ -152,6 +152,24 @@ class ViewTests(TestCase):
         self.assertContains(response, "1 Analyse gelöscht.")
         self.assertContains(response, "1 laufende Analyse(n) nicht gelöscht")
 
+    def test_note_is_saved_and_shown_in_history(self):
+        lookup = Lookup.objects.create(kind="ip", query="203.0.113.7", created_by=self.user, status="done")
+        self.client.force_login(self.user)
+        response = self.client.post(reverse("lookups:note", args=[lookup.pk]), {"note": "  Anruf   vom Paketdienst "})
+        self.assertRedirects(response, reverse("lookups:detail", args=[lookup.pk]))
+        lookup.refresh_from_db()
+        self.assertEqual(lookup.note, "Anruf vom Paketdienst")
+        self.assertContains(self.client.get(reverse("lookups:index")), "(Anruf vom Paketdienst)")
+        self.assertContains(self.client.get(reverse("lookups:detail", args=[lookup.pk])), "Notiz bearbeiten")
+
+    def test_note_only_for_visible_lookups(self):
+        other = get_user_model().objects.create_user("other", password="pw-123456")
+        lookup = Lookup.objects.create(kind="ip", query="203.0.113.7", created_by=other, status="done")
+        self.client.force_login(self.user)
+        self.assertEqual(self.client.post(reverse("lookups:note", args=[lookup.pk]), {"note": "x"}).status_code, 404)
+        lookup.refresh_from_db()
+        self.assertEqual(lookup.note, "")
+
     def test_delete_requires_post(self):
         self.client.force_login(self.user)
         self.assertEqual(self.client.get(reverse("lookups:delete")).status_code, 405)

@@ -177,3 +177,14 @@ button:disabled { opacity: .5; cursor: default; }
   .history.picking table.tiles tr.picked { outline: 2px solid var(--accent); background: color-mix(in srgb, var(--accent) 10%, var(--surface)); }
   .history.picking tr.picked td { background: none; }
 }
+
+/* Notiz zu einer Analyse */
+.note { margin: 0 0 8px; font-style: italic; }
+details.note-edit { background: none; border: 0; padding: 0; margin: 0 0 16px; }
+details.note-edit summary { display: inline-block; list-style: none; padding: 4px 12px; font-size: .85rem; border-radius: 6px;
+  background: var(--surface); color: var(--accent); border: 1px solid var(--accent); }
+details.note-edit summary::-webkit-details-marker { display: none; }
+details.note-edit[open] summary { margin-bottom: 8px; }
+.note-form { display: flex; gap: 8px; }
+.note-tip { margin: 4px 0 0; font-size: .85rem; }
+.t-note { color: var(--muted); font-weight: 400; white-space: normal; }

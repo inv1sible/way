@@ -32,6 +32,7 @@ class Lookup(models.Model):
     sources = models.JSONField("Rohdaten", default=list, blank=True)
     report_md = models.TextField("Bericht", blank=True)
     error = models.TextField("Fehler", blank=True)
+    note = models.CharField("Notiz", max_length=200, blank=True, default="")
     as_of = models.DateField(
         "Stand", null=True, blank=True,
         help_text="Rückblick: Historische Quellen (BGP, Passive DNS) für dieses Datum auswerten.",

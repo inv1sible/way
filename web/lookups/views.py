@@ -174,6 +174,14 @@ def report_pdf(request, pk):
 
 
 @require_POST
+def note(request, pk):
+    lookup = get_object_or_404(_visible(request), pk=pk)
+    lookup.note = " ".join(request.POST.get("note", "").split())[:200]
+    lookup.save(update_fields=["note"])  # nur dieses Feld: Der Worker schreibt evtl. gleichzeitig in die anderen
+    return redirect("lookups:detail", pk=pk)
+
+
+@require_POST
 def rerun(request, pk):
     lookup = get_object_or_404(_visible(request), pk=pk)
     return _start(request, lookup.kind, lookup.query, active=lookup.active_probe, scan=lookup.port_scan, as_of=lookup.as_of)

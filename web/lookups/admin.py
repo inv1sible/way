@@ -7,7 +7,7 @@ from .models import Lookup, OwnedTarget
 class LookupAdmin(admin.ModelAdmin):
     list_display = ("query", "kind", "risk", "status", "created_at", "created_by")
     list_filter = ("kind", "risk", "status")
-    search_fields = ("query",)
+    search_fields = ("query", "note")
     readonly_fields = ("created_at", "finished_at")
 
 

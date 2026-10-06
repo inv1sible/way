@@ -10,6 +10,15 @@
 {% block content %}
 <p><a href="{% url 'lookups:index' %}">← Neue Abfrage</a></p>
 <h1>{{ lookup.query }}</h1>
+{% if lookup.note %}<p class="note">{{ lookup.note }}</p>{% endif %}
+<details class="note-edit">
+  <summary>{% if lookup.note %}Notiz bearbeiten{% else %}Notiz hinzufügen{% endif %}</summary>
+  <form method="post" action="{% url 'lookups:note' lookup.pk %}" class="note-form">{% csrf_token %}
+    <input name="note" value="{{ lookup.note }}" maxlength="200" placeholder="z. B. Anruf vom 05.10., angeblich Paketdienst" aria-label="Notiz">
+    <button class="small">Speichern</button>
+  </form>
+  {% if lookup.note %}<p class="muted note-tip">Feld leeren und speichern entfernt die Notiz.</p>{% endif %}
+</details>
 
 <div id="live" data-url="{% url 'lookups:status' lookup.pk %}" data-rev="{{ rev }}"{% if lookup.is_running %} data-running="1"{% endif %}>
   <p class="muted" id="l-meta" data-h="{{ fragments.meta.h }}">{{ fragments.meta.html }}</p>
