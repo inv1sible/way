@@ -137,8 +137,13 @@ document.addEventListener("click", async (event) => {
   });
 
   form.addEventListener("submit", (event) => {
-    const count = boxes().filter((box) => box.checked).length;
-    if (!count || !confirm(count === 1 ? "Diese Analyse löschen?" : `${count} Analysen löschen?`)) event.preventDefault();
+    const chosen = boxes().filter((box) => box.checked);
+    // Ein Eintrag kann mehrere Läufe derselben Abfrage umfassen (value "36,31,30")
+    const runs = chosen.reduce((sum, box) => sum + box.value.split(",").length, 0);
+    const question = runs === 1 ? "Diese Analyse löschen?"
+      : chosen.length === runs ? `${runs} Analysen löschen?`
+      : `${chosen.length} Einträge mit zusammen ${runs} Analysen (alle Läufe) löschen?`;
+    if (!chosen.length || !confirm(question)) event.preventDefault();
   });
 })();
 

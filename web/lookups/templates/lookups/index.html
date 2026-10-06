@@ -43,12 +43,12 @@
   <tbody>
   {% for l in lookups %}
     <tr class="tile-risk-{{ l.risk|default:'none' }}" data-pick-row>
-      <td class="t-pick"><input type="checkbox" name="ids" value="{{ l.pk }}" aria-label="{{ l.query }} auswählen"
+      <td class="t-pick"><input type="checkbox" name="ids" value="{{ l.runs|join:',' }}" aria-label="{{ l.query }} auswählen"
           {% if l.is_running %}disabled title="Läuft noch, kann erst danach gelöscht werden"{% endif %}></td>
       <td class="t-query"><a href="{% url 'lookups:detail' l.pk %}">{{ l.query }}</a>{% if l.note %} <span class="t-note">({{ l.note }})</span>{% endif %}</td>
       <td class="t-kind">{{ l.get_kind_display }}</td>
       <td class="t-status">{% if l.is_running %}<span class="spinner"></span> {% endif %}{{ l.get_status_display }}{% if l.risk %} · <span class="risk risk-{{ l.risk }}">Risiko {{ l.risk }}</span>{% endif %}</td>
-      <td class="t-time muted">{{ l.created_at|date:"d.m.Y H:i" }}</td>
+      <td class="t-time muted">{{ l.created_at|date:"d.m.Y H:i" }}{% if l.runs|length > 1 %} <span class="t-runs" title="{{ l.runs|length }} Analysen dieser Abfrage; frühere im Verlauf auf der Detailseite">{{ l.runs|length }}×</span>{% endif %}</td>
       {% if user.is_staff %}<td class="t-user muted">{% if l.created_by %}{{ l.created_by.email|default:l.created_by.username }}{% else %}–{% endif %}</td>{% endif %}
     </tr>
   {% endfor %}

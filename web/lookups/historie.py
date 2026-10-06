@@ -19,6 +19,45 @@ def _data(sources, prefix):
     return next((s.get("data") for s in sources if s.get("ok") and s["source"].startswith(prefix)), None)
 
 
+def _exact(sources, name):
+    return next((s.get("data") for s in sources if s.get("ok") and s["source"] == name), None)
+
+
+def _reputation(sources):
+    """Bewertungen der Reputationsdienste. Nur Quellen, die in der Analyse liefen: Fehlt ein Key oder
+    scheiterte die Abfrage, fehlt das Merkmal und zählt nicht als Änderung."""
+    found = {}
+    if abuse := _exact(sources, "AbuseIPDB"):
+        found["abuseipdb_score"] = abuse.get("abuseConfidenceScore")
+        found["abuseipdb_meldungen"] = abuse.get("totalReports")
+    for name, prefix in (("VirusTotal", "virustotal"), ("VirusTotal (Hostname)", "virustotal_name")):
+        if stats := (_exact(sources, name) or {}).get("last_analysis_stats"):
+            found[f"{prefix}_boesartig"] = stats.get("malicious")
+            found[f"{prefix}_verdaechtig"] = stats.get("suspicious")
+    if crowdsec := _exact(sources, "CrowdSec CTI"):
+        found["crowdsec_reputation"] = crowdsec.get("reputation")
+    if greynoise := _exact(sources, "GreyNoise Community"):
+        found["greynoise"] = greynoise.get("classification") or ("Scanner" if greynoise.get("noise") else "nicht beobachtet")
+    for name, key in (("AlienVault OTX", "otx_pulses"), ("AlienVault OTX (Hostname)", "otx_name_pulses")):
+        if otx := _exact(sources, name):
+            found[key] = otx.get("pulse_anzahl")
+    for name, key in (("abuse.ch ThreatFox", "threatfox_treffer"), ("abuse.ch ThreatFox (Hostname)", "threatfox_name_treffer")):
+        if threatfox := _exact(sources, name):
+            found[key] = len(threatfox.get("treffer") or [])
+    for name, key in (("abuse.ch URLhaus", "urlhaus_urls"), ("abuse.ch URLhaus (Hostname)", "urlhaus_name_urls")):
+        if urlhaus := _exact(sources, name):
+            found[key] = urlhaus.get("url_anzahl")
+    if spamhaus := _exact(sources, "Spamhaus ZEN"):
+        found["spamhaus"] = ", ".join(spamhaus.get("listen") or []) if spamhaus.get("gelistet") else "nicht gelistet"
+    if tor := _exact(sources, "Tor-Exit-Liste"):
+        found["tor_exit"] = "ja" if tor.get("tor_exit_node") else "nein"
+    if shodan := _exact(sources, "Shodan InternetDB"):
+        found["shodan_ports"] = sorted(shodan.get("ports") or [])
+    if censys := _exact(sources, "Censys (Internet-Scan-Daten)"):
+        found["censys_dienste"] = sorted(d.get("port") for d in censys.get("dienste", []) if d.get("port")) or censys.get("anzahl_dienste")
+    return found
+
+
 def facts(sources):
     """Messbare Merkmale einer Analyse, die sich im Lauf der Zeit ändern können."""
     found = {}
@@ -36,6 +75,7 @@ def facts(sources):
         found["massnahmenliste_treffer"] = len(bnetza.get("treffer", []))
     if clever := _data(sources, "Clever Dialer"):
         found["clever_dialer_bewertungen"] = clever.get("bewertungen")
+    found.update(_reputation(sources))
     return {key: value for key, value in found.items() if value not in (None, [], "")}
 
 

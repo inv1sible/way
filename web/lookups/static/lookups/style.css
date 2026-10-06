@@ -191,3 +191,4 @@ details.note-edit[open] summary { margin-bottom: 8px; }
 /* Optionen der Suche nur zeigen, solange das Formular den Fokus hat (Klasse setzt app.js) */
 #analyze.collapsible:not(.open) .opts { display: none; }
 h2 .count { color: var(--muted); font-weight: 400; }
+.t-runs { display: inline-block; margin-left: 4px; padding: 0 6px; border-radius: 10px; border: 1px solid var(--border); font-size: .8rem; }

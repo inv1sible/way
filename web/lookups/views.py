@@ -38,12 +38,25 @@ def _visible(request):
     return lookups if request.user.is_staff else lookups.filter(created_by=request.user)
 
 
+def _grouped(request, limit=50):
+    """Verlauf: je Abfrage (und Nutzer) nur die neueste Analyse, mit allen Läufen der Gruppe. Gruppiert wird
+    in Python, damit auch Analysen ohne Eigentümer (NULL) zusammenfinden."""
+    groups = {}
+    for pk, kind, query, owner in _visible(request).values_list("pk", "kind", "query", "created_by_id"):
+        groups.setdefault((kind, query, owner), []).append(pk)  # neueste zuerst (Sortierung des Modells)
+    latest = {pks[0]: pks for pks in groups.values()}
+    shown = list(_visible(request).filter(pk__in=list(latest)[:limit]))
+    for lookup in shown:
+        lookup.runs = latest[lookup.pk]
+    return shown, len(groups)
+
+
 def _index(request, q="", error=None, shared=None):
-    visible = _visible(request)
+    lookups, total = _grouped(request)
     return render(
         request,
         "lookups/index.html",
-        {"lookups": visible[:50], "total": visible.count(), "q": q, "error": error, "shared": shared,
+        {"lookups": lookups, "total": total, "q": q, "error": error, "shared": shared,
          "today": timezone.localdate().isoformat()},
         status=400 if error and request.method == "POST" else 200,
     )
@@ -72,7 +85,8 @@ def index(request):
 def delete(request):
     """Ausgewählte Analysen aus dem Verlauf löschen. Nur sichtbare (eigene, bei Admins alle) und nur
     abgeschlossene: In laufende schreibt der Worker noch."""
-    ids = [int(i) for i in request.POST.getlist("ids") if i.isdigit()]
+    # Ein Eintrag im Verlauf steht für alle Läufe derselben Abfrage: "36,31,30"
+    ids = [int(i) for value in request.POST.getlist("ids") for i in value.split(",") if i.isdigit()]
     chosen = _visible(request).filter(pk__in=ids)
     running = chosen.filter(status__in=(Lookup.Status.PENDING, Lookup.Status.COLLECTING, Lookup.Status.ANALYZING))
     skipped = running.count()

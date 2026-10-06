@@ -171,6 +171,19 @@ class ViewTests(TestCase):
         lookup.refresh_from_db()
         self.assertEqual(lookup.note, "")
 
+    def test_history_list_groups_runs_of_the_same_query(self):
+        for query in ("203.0.113.7", "203.0.113.8", "203.0.113.7"):
+            Lookup.objects.create(kind="ip", query=query, created_by=self.user, status="done")
+        newest = Lookup.objects.filter(query="203.0.113.7").first()
+        self.client.force_login(self.user)
+        page = self.client.get(reverse("lookups:index"))
+        self.assertEqual([l.pk for l in page.context["lookups"]][0], newest.pk)
+        self.assertEqual(page.context["total"], 2)
+        self.assertContains(page, "2×")
+        runs = ",".join(str(pk) for pk in Lookup.objects.filter(query="203.0.113.7").values_list("pk", flat=True))
+        self.client.post(reverse("lookups:delete"), {"ids": [runs]})
+        self.assertEqual(list(Lookup.objects.values_list("query", flat=True)), ["203.0.113.8"])
+
     def test_delete_requires_post(self):
         self.client.force_login(self.user)
         self.assertEqual(self.client.get(reverse("lookups:delete")).status_code, 405)
@@ -1190,6 +1203,18 @@ class OwnHistoryTests(TestCase):
         self.assertEqual(result["aenderungen_seit_letzter_analyse"], {"adressen": {"vorher": "91.0.0.2", "jetzt": "91.0.0.3"}})
         self.assertEqual(result["analysen"][1]["geaendert"], ["adressen"])
         self.assertNotIn("geaendert", result["analysen"][0])
+
+    def test_reputation_changes_are_reported(self):
+        def rep(score, malicious):
+            return [{"source": "AbuseIPDB", "ok": True, "data": {"abuseConfidenceScore": score, "totalReports": 0}},
+                    {"source": "VirusTotal", "ok": True, "data": {"last_analysis_stats": {"malicious": malicious, "suspicious": 0}}},
+                    {"source": "CrowdSec CTI", "ok": False, "error": "x"}]
+        Lookup.objects.create(kind="ip", query="91.0.0.1", created_by=self.anna, status=Lookup.Status.DONE,
+                              sources=rep(0, 0))
+        current = Lookup.objects.create(kind="ip", query="91.0.0.1", created_by=self.anna)
+        result = historie.own_history(current, rep(0, 3))
+        self.assertEqual(result["aenderungen_seit_letzter_analyse"],
+                         {"virustotal_boesartig": {"vorher": "0", "jetzt": "3"}})
 
     def test_missing_facts_are_not_reported_as_changes(self):
         """Lief in der früheren Analyse ein Portscan und jetzt nicht, ist das keine Änderung des Systems."""
