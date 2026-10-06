@@ -196,6 +196,20 @@ class ViewTests(TestCase):
         self.assertEqual([run.pk for run in page.context["runs"]], [old.pk])
         self.assertContains(page, reverse("lookups:detail", args=[old.pk]))
 
+    def test_history_list_sorts_runs_of_the_same_minute_alphabetically(self):
+        from django.utils import timezone
+        minute = timezone.now().replace(second=0, microsecond=0) - __import__("datetime").timedelta(minutes=10)
+        for query, second in (("b.example.org", 1), ("a.example.org", 2), ("c.example.org", 3)):
+            lookup = Lookup.objects.create(kind="host", query=query, created_by=self.user, status="done")
+            Lookup.objects.filter(pk=lookup.pk).update(created_at=minute.replace(second=second))
+        Lookup.objects.create(kind="host", query="z.example.org", created_by=self.user, status="done")
+        lookup = Lookup.objects.create(kind="host", query="y.example.org", created_by=self.user, status="done")
+        Lookup.objects.filter(pk=lookup.pk).update(created_at=minute - __import__("datetime").timedelta(minutes=5))
+        self.client.force_login(self.user)
+        page = self.client.get(reverse("lookups:index"))
+        queries = [l.query for l in page.context["lookups"]]
+        self.assertEqual(queries[-4:], ["a.example.org", "b.example.org", "c.example.org", "y.example.org"])
+
     def test_delete_requires_post(self):
         self.client.force_login(self.user)
         self.assertEqual(self.client.get(reverse("lookups:delete")).status_code, 405)
@@ -1271,7 +1285,8 @@ class OwnHistoryTests(TestCase):
         near = self._done(self.anna, ["91.0.0.1"], now - datetime.timedelta(days=10))
         self._done(self.anna, ["91.0.0.2"], now - datetime.timedelta(days=2))
         current = Lookup.objects.create(kind="host", query="fritz.example.net", created_by=self.anna)
-        stichtag = (now - datetime.timedelta(days=9)).date()
+        # Ortsdatum wie in historie.py: mit UTC schlug der Test nachts zwischen 0 und 2 Uhr fehl
+        stichtag = __import__("django.utils.timezone", fromlist=["x"]).localtime(now - datetime.timedelta(days=9)).date()
         result = historie.own_history(current, self._now_sources(["91.0.0.2"]), as_of=stichtag)
         self.assertEqual(result["naechste_zum_stichtag"]["analyse"], near.pk)
         self.assertEqual(result["naechste_zum_stichtag"]["abstand_tage"], 1)

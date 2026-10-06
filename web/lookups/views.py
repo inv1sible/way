@@ -48,6 +48,9 @@ def _grouped(request, limit=50):
     shown = list(_visible(request).filter(pk__in=list(latest)[:limit]))
     for lookup in shown:
         lookup.runs = latest[lookup.pk]
+    # Neueste zuerst, innerhalb derselben (angezeigten) Minute alphabetisch, z. B. bei mehreren gleichzeitig gestarteten
+    shown.sort(key=lambda l: l.query.casefold())
+    shown.sort(key=lambda l: l.created_at.replace(second=0, microsecond=0), reverse=True)
     return shown, len(groups)
 
 
