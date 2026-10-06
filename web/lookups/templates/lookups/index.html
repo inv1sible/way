@@ -1,11 +1,12 @@
 {% extends "base.html" %}
 {% block content %}
 {% if shared %}<p class="muted">Geteilt: „{{ shared|truncatechars:160 }}“</p>{% endif %}
-<form method="post" action="{% url 'lookups:index' %}">{% csrf_token %}
+<form method="post" action="{% url 'lookups:index' %}" id="analyze">{% csrf_token %}
   <div class="search">
     <input name="q" value="{{ q }}" placeholder="Rufnummer, IP-Adresse oder Hostname, z. B. 030 1234567 oder 203.0.113.7"
            autocomplete="off" autofocus required>
   </div>
+  <div class="opts">
   <label class="opt-date">Stand (optional): Rückblick auf ein Datum
     <input type="date" name="asof" min="2000-01-01" max="{{ today }}">
     <span class="muted">BGP- und Passive-DNS-Historie zum Datum, dazu der Verlauf deiner früheren Analysen</span></label>
@@ -17,13 +18,14 @@
     <span>Portscan (nmap, Top-1000-Ports): nur für eigene Systeme
       <span class="muted">(<a href="{% url 'admin:lookups_ownedtarget_changelist' %}">Liste verwalten</a>)</span></span></label>
   {% endif %}
+  </div>
   <button class="submit">Analysieren</button>
 </form>
 {% if error %}<p class="error">{{ error }}</p>{% endif %}
 
 <form method="post" action="{% url 'lookups:delete' %}" id="history" class="history">{% csrf_token %}
 <div class="history-head">
-  <h2>Verlauf</h2>
+  <h2>Verlauf{% if total %} <span class="count">({{ total }})</span>{% endif %}</h2>
   {% if lookups %}
   <div class="pick-bar">
     <button type="button" class="secondary small" data-pick-start>Auswählen</button>
@@ -37,7 +39,7 @@
 <p class="muted pick-hint">Lange auf eine Analyse drücken, um sie auszuwählen.</p>
 <div class="table-wrap">
 <table class="tiles">
-  <thead><tr><th class="t-pick"></th><th>Abfrage</th><th>Typ</th><th>Risiko</th><th>Status</th><th>Zeit</th>{% if user.is_staff %}<th>Nutzer</th>{% endif %}</tr></thead>
+  <thead><tr><th class="t-pick"></th><th>Abfrage</th><th>Typ</th><th>Status</th><th>Zeit</th>{% if user.is_staff %}<th>Nutzer</th>{% endif %}</tr></thead>
   <tbody>
   {% for l in lookups %}
     <tr class="tile-risk-{{ l.risk|default:'none' }}" data-pick-row>
@@ -45,8 +47,7 @@
           {% if l.is_running %}disabled title="Läuft noch, kann erst danach gelöscht werden"{% endif %}></td>
       <td class="t-query"><a href="{% url 'lookups:detail' l.pk %}">{{ l.query }}</a>{% if l.note %} <span class="t-note">({{ l.note }})</span>{% endif %}</td>
       <td class="t-kind">{{ l.get_kind_display }}</td>
-      <td class="t-risk"><span class="risk risk-{{ l.risk|default:'none' }}">{{ l.risk|default:"–" }}</span></td>
-      <td class="t-status">{% if l.is_running %}<span class="spinner"></span> {% endif %}{{ l.get_status_display }}</td>
+      <td class="t-status">{% if l.is_running %}<span class="spinner"></span> {% endif %}{{ l.get_status_display }}{% if l.risk %} · <span class="risk risk-{{ l.risk }}">Risiko {{ l.risk }}</span>{% endif %}</td>
       <td class="t-time muted">{{ l.created_at|date:"d.m.Y H:i" }}</td>
       {% if user.is_staff %}<td class="t-user muted">{% if l.created_by %}{{ l.created_by.email|default:l.created_by.username }}{% else %}–{% endif %}</td>{% endif %}
     </tr>

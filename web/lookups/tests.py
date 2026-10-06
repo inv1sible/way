@@ -160,6 +160,7 @@ class ViewTests(TestCase):
         lookup.refresh_from_db()
         self.assertEqual(lookup.note, "Anruf vom Paketdienst")
         self.assertContains(self.client.get(reverse("lookups:index")), "(Anruf vom Paketdienst)")
+        self.assertContains(self.client.get(reverse("lookups:index")), '<span class="count">(1)</span>', html=False)
         self.assertContains(self.client.get(reverse("lookups:detail", args=[lookup.pk])), "Notiz bearbeiten")
 
     def test_note_only_for_visible_lookups(self):

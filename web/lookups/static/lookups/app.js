@@ -141,3 +141,22 @@ document.addEventListener("click", async (event) => {
     if (!count || !confirm(count === 1 ? "Diese Analyse löschen?" : `${count} Analysen löschen?`)) event.preventDefault();
   });
 })();
+
+// Suchformular: Optionen (Stand, Admin-Schalter) eingeklappt, bis das Eingabefeld den Fokus bekommt. Sie bleiben
+// offen, solange im Formular gearbeitet wird oder eine Option gesetzt ist, damit nichts unbemerkt mitläuft.
+(() => {
+  const form = document.getElementById("analyze");
+  if (!form) return;
+  const query = form.querySelector('input[name="q"]');
+  const optionSet = () => [...form.querySelectorAll(".opts input")].some((input) =>
+    input.type === "checkbox" ? input.checked : input.value);
+  const toggle = (open) => form.classList.toggle("open", open || optionSet());
+  form.classList.add("collapsible");
+  toggle(document.activeElement === query);
+  query.addEventListener("focus", () => toggle(true));
+  // Klick außerhalb schließt; Klicks auf Beschriftungen im Formular nehmen den Fokus, sollen aber nicht schließen
+  document.addEventListener("pointerdown", (event) => { if (!form.contains(event.target)) toggle(false); });
+  form.addEventListener("focusout", (event) => {
+    if (event.relatedTarget && !form.contains(event.relatedTarget)) toggle(false);  // Tab aus dem Formular
+  });
+})();

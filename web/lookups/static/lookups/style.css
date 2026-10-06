@@ -80,7 +80,7 @@ header nav form { display: inline; }
     position: relative;
     display: grid;
     grid-template-columns: 1fr auto;
-    grid-template-areas: "query risk" "kind time" "status user";
+    grid-template-areas: "query query" "kind time" "status user";
     gap: 4px 12px;
     margin-bottom: 10px;
     padding: 12px 14px;
@@ -95,7 +95,6 @@ header nav form { display: inline; }
   .t-query { grid-area: query; font-weight: 600; font-size: 1.05rem; word-break: break-all; }
   .t-query a { color: var(--text); text-decoration: none; }
   .t-query a::after { content: ""; position: absolute; inset: 0; }  /* ganze Kachel antippbar */
-  .t-risk { grid-area: risk; justify-self: end; }
   .t-kind { grid-area: kind; color: var(--muted); font-size: .9rem; }
   .t-time { grid-area: time; justify-self: end; font-size: .9rem; }
   .t-status { grid-area: status; display: flex; align-items: center; gap: 6px; font-size: .9rem; }
@@ -187,4 +186,8 @@ details.note-edit summary::-webkit-details-marker { display: none; }
 details.note-edit[open] summary { margin-bottom: 8px; }
 .note-form { display: flex; gap: 8px; }
 .note-tip { margin: 4px 0 0; font-size: .85rem; }
-.t-note { color: var(--muted); font-weight: 400; white-space: normal; }
+.t-note { color: var(--muted); font-weight: 400; white-space: normal; word-break: normal; overflow-wrap: anywhere; }
+
+/* Optionen der Suche nur zeigen, solange das Formular den Fokus hat (Klasse setzt app.js) */
+#analyze.collapsible:not(.open) .opts { display: none; }
+h2 .count { color: var(--muted); font-weight: 400; }

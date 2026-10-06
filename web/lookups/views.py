@@ -39,10 +39,11 @@ def _visible(request):
 
 
 def _index(request, q="", error=None, shared=None):
+    visible = _visible(request)
     return render(
         request,
         "lookups/index.html",
-        {"lookups": _visible(request)[:50], "q": q, "error": error, "shared": shared,
+        {"lookups": visible[:50], "total": visible.count(), "q": q, "error": error, "shared": shared,
          "today": timezone.localdate().isoformat()},
         status=400 if error and request.method == "POST" else 200,
     )
