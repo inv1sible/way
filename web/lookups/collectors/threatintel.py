@@ -6,7 +6,23 @@ API-Key gesetzt ist.
 
 from datetime import datetime, timezone
 
+import httpx
 from django.conf import settings
+
+
+async def otx_get(client, url):
+    """GET bei AlienVault OTX. OTX beendet Antworten bei Komprimierung oder Keep-Alive nicht sauber
+    (ReadTimeout), deshalb unkomprimiert und mit Connection: close. Hängt es trotzdem (oder bei Hostnamen
+    mit sehr vielen Einträgen: HTTP 504), gibt es einen zweiten Versuch mit neuer Verbindung, dann Schluss."""
+    headers = {"Accept-Encoding": "identity", "Connection": "close"}
+    if settings.OSINT_OTX_KEY:
+        headers["X-OTX-API-KEY"] = settings.OSINT_OTX_KEY
+    try:
+        response = await client.get(url, headers=headers, timeout=30)
+    except httpx.TimeoutException:
+        response = await client.get(url, headers=headers, timeout=30)
+    response.raise_for_status()
+    return response.json()
 
 
 def jobs(client, indicator, kind):
@@ -51,12 +67,7 @@ async def virustotal(client, indicator, kind):
 
 async def otx(client, indicator, kind):
     section = "hostname" if kind == "domain" else ("IPv6" if ":" in indicator else "IPv4")
-    headers = {"X-OTX-API-KEY": settings.OSINT_OTX_KEY} if settings.OSINT_OTX_KEY else {}
-    response = await client.get(
-        f"https://otx.alienvault.com/api/v1/indicators/{section}/{indicator}/general", headers=headers
-    )
-    response.raise_for_status()
-    data = response.json()
+    data = await otx_get(client, f"https://otx.alienvault.com/api/v1/indicators/{section}/{indicator}/general")
     pulses = data.get("pulse_info") or {}
     return {
         "pulse_anzahl": pulses.get("count", 0),

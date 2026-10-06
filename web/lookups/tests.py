@@ -1338,6 +1338,25 @@ class OtxPassiveRequestTests(SimpleTestCase):
             asyncio.run(go(dead))
 
 
+class OtxReputationRequestTests(SimpleTestCase):
+    def test_reputation_lookup_retries_one_timeout_without_compression(self):
+        import httpx
+        calls = []
+
+        def flaky(request):
+            calls.append(request.headers["accept-encoding"])
+            if len(calls) == 1:
+                raise httpx.ReadTimeout("hängt", request=request)
+            return httpx.Response(200, json={"pulse_info": {"count": 0, "pulses": []}, "reputation": 0})
+
+        async def go():
+            async with httpx.AsyncClient(transport=httpx.MockTransport(flaky)) as client:
+                return await threatintel.otx(client, "8.8.8.8", "ip")
+
+        self.assertEqual(asyncio.run(go())["pulse_anzahl"], 0)
+        self.assertEqual(calls, ["identity", "identity"])
+
+
 class CopyButtonTests(TestCase):
     def test_every_source_and_the_whole_list_have_copy_buttons(self):
         user = get_user_model().objects.create_user("anna", password="x")

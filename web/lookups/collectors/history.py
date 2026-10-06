@@ -7,8 +7,7 @@ sagt nichts darüber, wer die Adresse im Netz des Providers gerade nutzte (das w
 
 from datetime import date, timedelta
 
-import httpx
-from django.conf import settings
+from .threatintel import otx_get
 
 RIPESTAT = "https://stat.ripe.net/data"
 SOURCEAPP = "who-are-you"
@@ -118,20 +117,8 @@ def summarize_passive(rows, day, kind):
 
 async def otx_passive_dns(client, indicator, kind, day):
     section = "hostname" if kind == "host" else ("IPv6" if ":" in indicator else "IPv4")
-    # OTX beendet Antworten dieses Endpunkts bei Komprimierung oder Keep-Alive nicht sauber (ReadTimeout):
-    # deshalb unkomprimiert und mit Connection: close.
-    headers = {"Accept-Encoding": "identity", "Connection": "close"}
-    if settings.OSINT_OTX_KEY:
-        headers["X-OTX-API-KEY"] = settings.OSINT_OTX_KEY
-    url = f"https://otx.alienvault.com/api/v1/indicators/{section}/{indicator}/passive_dns"
-    # OTX hängt gelegentlich ohne erkennbaren Grund (und bei Hostnamen mit sehr vielen Einträgen: HTTP 504):
-    # ein zweiter Versuch mit neuer Verbindung, danach aufgeben.
-    try:
-        response = await client.get(url, headers=headers, timeout=30)
-    except httpx.TimeoutException:
-        response = await client.get(url, headers=headers, timeout=30)
-    response.raise_for_status()
-    return summarize_passive(response.json().get("passive_dns", []), day, kind)
+    data = await otx_get(client, f"https://otx.alienvault.com/api/v1/indicators/{section}/{indicator}/passive_dns")
+    return summarize_passive(data.get("passive_dns", []), day, kind)
 
 
 def address_at(passive, day=None):
