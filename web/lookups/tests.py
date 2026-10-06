@@ -1299,3 +1299,21 @@ class OtxPassiveRequestTests(SimpleTestCase):
         self.assertEqual(len(calls), 2)
         with self.assertRaises(httpx.TimeoutException):
             asyncio.run(go(dead))
+
+
+class CopyButtonTests(TestCase):
+    def test_every_source_and_the_whole_list_have_copy_buttons(self):
+        user = get_user_model().objects.create_user("anna", password="x")
+        lookup = Lookup.objects.create(
+            kind="ip", query="8.8.8.8", created_by=user, status=Lookup.Status.DONE,
+            sources=[{"source": "Reverse DNS", "ok": True, "data": {"ptr": "dns.google"}},
+                     {"source": "RDAP", "ok": False, "error": "Timeout"}])
+        self.client.force_login(user)
+        page = self.client.get(reverse("lookups:detail", args=[lookup.pk]))
+        self.assertContains(page, "data-copy-all")
+        self.assertContains(page, "data-copy-source", count=2)
+        self.assertContains(page, '<pre class="raw">')
+        self.assertContains(page, 'class="error raw"')  # auch Fehlermeldungen lassen sich kopieren
+        # beim Nachladen während der Recherche enthalten die Teile ebenfalls den Button
+        status = self.client.get(reverse("lookups:status", args=[lookup.pk])).json()
+        self.assertTrue(all("data-copy-source" in source["html"] for source in status["sources"]))

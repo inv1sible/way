@@ -146,3 +146,9 @@ table.ports td.nw, table.ports th.nw { white-space: nowrap; }
 table.ports td:first-child { white-space: nowrap; }
 
 .opt-date { display: grid; gap: 4px; margin-top: 10px; font-size: .9rem; max-width: 22rem; }
+
+.sources-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-top: 2rem; }
+.sources-head[hidden] { display: none; }
+.sources-head h2 { margin: 0; }
+button.copy { padding: 4px 12px; font-size: .85rem; }
+.raw-tools { text-align: right; margin-top: 6px; }

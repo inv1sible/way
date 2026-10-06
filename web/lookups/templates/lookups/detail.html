@@ -21,7 +21,10 @@
   <div id="l-history" data-h="{{ fragments.history.h }}">{{ fragments.history.html }}</div>
   <div id="l-hits" data-h="{{ fragments.hits.h }}">{{ fragments.hits.html }}</div>
 
-  <h2 id="l-sources-h"{% if not sources %} hidden{% endif %}>Rohdaten</h2>
+  <div id="l-sources-h" class="sources-head"{% if not sources %} hidden{% endif %}>
+    <h2>Rohdaten</h2>
+    <button type="button" class="copy secondary" data-copy-all>Alle kopieren</button>
+  </div>
   <div id="l-sources">
     {% for s in sources %}<div class="src" data-key="{{ s.key }}" data-h="{{ s.h }}">{{ s.html }}</div>{% endfor %}
   </div>

@@ -1,4 +1,5 @@
 {% load report_tags %}<details>
   <summary>{{ s.source }}{% if not s.ok %} <span class="risk risk-hoch">Fehler</span>{% endif %}</summary>
-  {% if s.ok %}<pre>{{ s.data|pretty_json }}</pre>{% else %}<p class="error">{{ s.error }}</p>{% endif %}
+  <div class="raw-tools"><button type="button" class="copy secondary" data-copy-source>Kopieren</button></div>
+  {% if s.ok %}<pre class="raw">{{ s.data|pretty_json }}</pre>{% else %}<p class="error raw">{{ s.error }}</p>{% endif %}
 </details>
