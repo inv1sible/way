@@ -184,6 +184,18 @@ class ViewTests(TestCase):
         self.client.post(reverse("lookups:delete"), {"ids": [runs]})
         self.assertEqual(list(Lookup.objects.values_list("query", flat=True)), ["203.0.113.8"])
 
+    def test_detail_lists_only_existing_runs_of_the_same_owner(self):
+        other = get_user_model().objects.create_user("other", password="pw-123456")
+        old = Lookup.objects.create(kind="ip", query="203.0.113.7", created_by=self.user, status="done")
+        gone = Lookup.objects.create(kind="ip", query="203.0.113.7", created_by=self.user, status="done")
+        Lookup.objects.create(kind="ip", query="203.0.113.7", created_by=other, status="done")
+        current = Lookup.objects.create(kind="ip", query="203.0.113.7", created_by=self.user, status="done")
+        gone.delete()
+        self.client.force_login(self.user)
+        page = self.client.get(reverse("lookups:detail", args=[current.pk]))
+        self.assertEqual([run.pk for run in page.context["runs"]], [old.pk])
+        self.assertContains(page, reverse("lookups:detail", args=[old.pk]))
+
     def test_delete_requires_post(self):
         self.client.force_login(self.user)
         self.assertEqual(self.client.get(reverse("lookups:delete")).status_code, 405)
@@ -1319,8 +1331,8 @@ class AsOfFormTests(TestCase):
         self.assertEqual(write.call_args.kwargs["as_of"], datetime.date(2026, 6, 15))
         self.assertEqual(lookup.sources[-1]["source"], "Frühere eigene Analysen")
         page = self.client.get(reverse("lookups:detail", args=[lookup.pk]))
-        self.assertContains(page, "Verlauf dieser Abfrage")
-        self.assertContains(page, "91.0.0.9")
+        self.assertContains(page, "Weitere Analysen dieser Abfrage (1)")
+        self.assertContains(page, "adressen</b>: 91.0.0.1 → 91.0.0.9")
 
 
 class OtxPassiveRequestTests(SimpleTestCase):

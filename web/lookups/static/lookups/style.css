@@ -192,3 +192,7 @@ details.note-edit[open] summary { margin-bottom: 8px; }
 #analyze.collapsible:not(.open) .opts { display: none; }
 h2 .count { color: var(--muted); font-weight: 400; }
 .t-runs { display: inline-block; margin-left: 4px; padding: 0 6px; border-radius: 10px; border: 1px solid var(--border); font-size: .8rem; }
+
+details.runs { margin: 0 0 16px; }
+details.runs ul { margin: 8px 0 0; padding-left: 18px; }
+details.runs li { margin: 4px 0; }

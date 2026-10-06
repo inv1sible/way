@@ -19,15 +19,28 @@
   </form>
   {% if lookup.note %}<p class="muted note-tip">Feld leeren und speichern entfernt die Notiz.</p>{% endif %}
 </details>
+{% if runs %}
+<details class="runs">
+  <summary>Weitere Analysen dieser Abfrage ({{ runs|length }})</summary>
+  <ul>
+    {% for run in runs %}
+    <li><a href="{% url 'lookups:detail' run.pk %}">{{ run.created_at|date:"d.m.Y H:i" }}</a>
+      {% if run.created_at > lookup.created_at %}<span class="muted">(neuer)</span>{% endif %}
+      · {% if run.risk %}<span class="risk risk-{{ run.risk }}">Risiko {{ run.risk }}</span>{% else %}{{ run.get_status_display }}{% endif %}
+      {% if run.as_of %}<span class="muted">· Stand {{ run.as_of|date:"d.m.Y" }}</span>{% endif %}</li>
+    {% endfor %}
+  </ul>
+</details>
+{% endif %}
 
 <div id="live" data-url="{% url 'lookups:status' lookup.pk %}" data-rev="{{ rev }}"{% if lookup.is_running %} data-running="1"{% endif %}>
   <p class="muted" id="l-meta" data-h="{{ fragments.meta.h }}">{{ fragments.meta.html }}</p>
+  <div id="l-history" data-h="{{ fragments.history.h }}">{{ fragments.history.html }}</div>
   <div class="progress" id="l-progress" data-h="{{ fragments.progress.h }}">{{ fragments.progress.html }}</div>
   <p class="muted" id="l-conn" hidden>Verbindung unterbrochen – neuer Versuch läuft …</p>
   <div id="l-error" data-h="{{ fragments.error.h }}">{{ fragments.error.html }}</div>
   <div id="l-report" data-h="{{ fragments.report.h }}">{{ fragments.report.html }}</div>
   <div id="l-scan" data-h="{{ fragments.scan.h }}">{{ fragments.scan.html }}</div>
-  <div id="l-history" data-h="{{ fragments.history.h }}">{{ fragments.history.html }}</div>
   <div id="l-hits" data-h="{{ fragments.hits.h }}">{{ fragments.hits.html }}</div>
 
   <div id="l-sources-h" class="sources-head"{% if not sources %} hidden{% endif %}>

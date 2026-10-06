@@ -4,7 +4,7 @@
 <form method="post" action="{% url 'lookups:index' %}" id="analyze">{% csrf_token %}
   <div class="search">
     <input name="q" value="{{ q }}" placeholder="Rufnummer, IP-Adresse oder Hostname, z. B. 030 1234567 oder 203.0.113.7"
-           autocomplete="off" autofocus required>
+           autocomplete="off" required>
   </div>
   <div class="opts">
   <label class="opt-date">Stand (optional): Rückblick auf ein Datum

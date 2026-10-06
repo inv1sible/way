@@ -161,10 +161,19 @@ def _fragments(request, lookup):
     }
 
 
+def _other_runs(request, lookup):
+    """Weitere Läufe derselben Abfrage desselben Eigentümers, frisch aus der Datenbank (der im Bericht
+    gespeicherte Verlauf kann auf inzwischen gelöschte Analysen zeigen)."""
+    runs = _visible(request).filter(kind=lookup.kind, query=lookup.query).exclude(pk=lookup.pk)
+    if lookup.created_by_id is None:
+        return runs.filter(created_by__isnull=True)
+    return runs.filter(created_by_id=lookup.created_by_id)
+
+
 def detail(request, pk):
     lookup = get_object_or_404(_visible(request), pk=pk)
     return render(request, "lookups/detail.html", {
-        "lookup": lookup, "rev": _rev(lookup), **_fragments(request, lookup),
+        "lookup": lookup, "rev": _rev(lookup), "runs": _other_runs(request, lookup), **_fragments(request, lookup),
     })
 
 
