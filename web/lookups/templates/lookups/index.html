@@ -5,7 +5,6 @@
   <div class="search">
     <input name="q" value="{{ q }}" placeholder="Rufnummer, IP-Adresse oder Hostname, z. B. 030 1234567 oder 203.0.113.7"
            autocomplete="off" autofocus required>
-    <button>Analysieren</button>
   </div>
   <label class="opt-date">Stand (optional): Rückblick auf ein Datum
     <input type="date" name="asof" min="2000-01-01" max="{{ today }}">
@@ -18,17 +17,32 @@
     <span>Portscan (nmap, Top-1000-Ports): nur für eigene Systeme
       <span class="muted">(<a href="{% url 'admin:lookups_ownedtarget_changelist' %}">Liste verwalten</a>)</span></span></label>
   {% endif %}
+  <button class="submit">Analysieren</button>
 </form>
 {% if error %}<p class="error">{{ error }}</p>{% endif %}
 
-<h2>Verlauf</h2>
+<form method="post" action="{% url 'lookups:delete' %}" id="history" class="history">{% csrf_token %}
+<div class="history-head">
+  <h2>Verlauf</h2>
+  {% if lookups %}
+  <div class="pick-bar">
+    <button type="button" class="secondary small" data-pick-start>Auswählen</button>
+    <span class="muted" data-pick-count></span>
+    <button class="danger small" data-pick-delete disabled>Löschen</button>
+    <button type="button" class="secondary small" data-pick-cancel>Abbrechen</button>
+  </div>
+  {% endif %}
+</div>
 {% if lookups %}
+<p class="muted pick-hint">Lange auf eine Analyse drücken, um sie auszuwählen.</p>
 <div class="table-wrap">
 <table class="tiles">
-  <thead><tr><th>Abfrage</th><th>Typ</th><th>Risiko</th><th>Status</th><th>Zeit</th>{% if user.is_staff %}<th>Nutzer</th>{% endif %}</tr></thead>
+  <thead><tr><th class="t-pick"></th><th>Abfrage</th><th>Typ</th><th>Risiko</th><th>Status</th><th>Zeit</th>{% if user.is_staff %}<th>Nutzer</th>{% endif %}</tr></thead>
   <tbody>
   {% for l in lookups %}
-    <tr class="tile-risk-{{ l.risk|default:'none' }}">
+    <tr class="tile-risk-{{ l.risk|default:'none' }}" data-pick-row>
+      <td class="t-pick"><input type="checkbox" name="ids" value="{{ l.pk }}" aria-label="{{ l.query }} auswählen"
+          {% if l.is_running %}disabled title="Läuft noch, kann erst danach gelöscht werden"{% endif %}></td>
       <td class="t-query"><a href="{% url 'lookups:detail' l.pk %}">{{ l.query }}</a></td>
       <td class="t-kind">{{ l.get_kind_display }}</td>
       <td class="t-risk"><span class="risk risk-{{ l.risk|default:'none' }}">{{ l.risk|default:"–" }}</span></td>
@@ -43,4 +57,5 @@
 {% else %}
 <p class="muted">Noch keine Analysen.</p>
 {% endif %}
+</form>
 {% endblock %}

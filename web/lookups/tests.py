@@ -138,6 +138,24 @@ class ViewTests(TestCase):
         self.assertEqual(response.status_code, 400)
         self.assertFalse(Lookup.objects.exists())
 
+    def test_delete_selected_own_finished_lookups(self):
+        other = get_user_model().objects.create_user("other", password="pw-123456")
+        done = Lookup.objects.create(kind="ip", query="203.0.113.7", created_by=self.user, status="done")
+        kept = Lookup.objects.create(kind="ip", query="203.0.113.8", created_by=self.user, status="done")
+        running = Lookup.objects.create(kind="ip", query="203.0.113.9", created_by=self.user, status="collecting")
+        foreign = Lookup.objects.create(kind="ip", query="203.0.113.10", created_by=other, status="done")
+        self.client.force_login(self.user)
+        response = self.client.post(reverse("lookups:delete"),
+                                    {"ids": [done.pk, running.pk, foreign.pk, "x"]}, follow=True)
+        self.assertRedirects(response, reverse("lookups:index"))
+        self.assertEqual(set(Lookup.objects.values_list("pk", flat=True)), {kept.pk, running.pk, foreign.pk})
+        self.assertContains(response, "1 Analyse gelöscht.")
+        self.assertContains(response, "1 laufende Analyse(n) nicht gelöscht")
+
+    def test_delete_requires_post(self):
+        self.client.force_login(self.user)
+        self.assertEqual(self.client.get(reverse("lookups:delete")).status_code, 405)
+
 
 PROXY = "10.9.9.9"
 

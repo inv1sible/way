@@ -71,3 +71,73 @@ document.addEventListener("click", async (event) => {
     flash(all, await copyText(parts.join("\n\n")));
   }
 });
+
+// Verlauf: Analysen zum Löschen auswählen. Langer Druck auf eine Analyse (oder "Auswählen") startet die
+// Auswahl, danach schaltet ein Tippen die Analyse um, statt sie zu öffnen.
+(() => {
+  const form = document.getElementById("history");
+  if (!form || !form.querySelector("[data-pick-row]")) return;
+  const boxes = () => [...form.querySelectorAll('input[name="ids"]')];
+  const picking = () => form.classList.contains("picking");
+
+  function refresh() {
+    const count = boxes().filter((box) => box.checked).length;
+    form.querySelector("[data-pick-count]").textContent = `${count} ausgewählt`;
+    form.querySelector("[data-pick-delete]").disabled = count === 0;
+    boxes().forEach((box) => box.closest("tr").classList.toggle("picked", box.checked));
+  }
+  function start(row) {
+    form.classList.add("picking");
+    const box = row && row.querySelector('input[name="ids"]');
+    if (box && !box.disabled) box.checked = true;
+    refresh();
+  }
+  function stop() {
+    form.classList.remove("picking");
+    boxes().forEach((box) => { box.checked = false; });
+    refresh();
+  }
+
+  let timer = null, origin = null, longPressed = false;
+  form.addEventListener("pointerdown", (event) => {
+    const row = event.target.closest("[data-pick-row]");
+    if (!row || picking() || event.button !== 0) return;
+    origin = [event.clientX, event.clientY];
+    longPressed = false;
+    timer = setTimeout(() => {
+      longPressed = true;
+      start(row);
+      if (navigator.vibrate) navigator.vibrate(20);
+    }, 500);
+  });
+  const cancel = () => { clearTimeout(timer); timer = null; };
+  form.addEventListener("pointerup", cancel);
+  form.addEventListener("pointercancel", cancel);
+  form.addEventListener("pointermove", (event) => {
+    if (timer && Math.hypot(event.clientX - origin[0], event.clientY - origin[1]) > 10) cancel();
+  });
+  // Kein Kontextmenü des Browsers für den Link, solange der lange Druck die Auswahl startet
+  form.addEventListener("contextmenu", (event) => {
+    if (event.target.closest("[data-pick-row]")) event.preventDefault();
+  });
+
+  form.addEventListener("click", (event) => {
+    if (event.target.closest("[data-pick-start]")) { start(null); return; }
+    if (event.target.closest("[data-pick-cancel]")) { stop(); return; }
+    const row = event.target.closest("[data-pick-row]");
+    if (!row) return;
+    if (longPressed) { event.preventDefault(); longPressed = false; return; }  // Loslassen nach langem Druck
+    if (!picking()) return;
+    const box = row.querySelector('input[name="ids"]');
+    if (event.target !== box) {
+      event.preventDefault();
+      if (!box.disabled) box.checked = !box.checked;
+    }
+    refresh();
+  });
+
+  form.addEventListener("submit", (event) => {
+    const count = boxes().filter((box) => box.checked).length;
+    if (!count || !confirm(count === 1 ? "Diese Analyse löschen?" : `${count} Analysen löschen?`)) event.preventDefault();
+  });
+})();

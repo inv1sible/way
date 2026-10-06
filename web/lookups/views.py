@@ -1,6 +1,7 @@
 import hashlib
 from datetime import date
 
+from django.contrib import messages
 from django.contrib.auth.decorators import login_not_required
 from django.db import transaction
 from django.http import HttpResponse, JsonResponse
@@ -64,6 +65,24 @@ def index(request):
         return _index(request, q=query, error=f"„{value}“ ist nicht als eigenes System eingetragen. "
                                               "Der Portscan ist nur für eigene Systeme erlaubt.")
     return _start(request, kind, value, active=request.POST.get("active") == "on", scan=scan, as_of=as_of)
+
+
+@require_POST
+def delete(request):
+    """Ausgewählte Analysen aus dem Verlauf löschen. Nur sichtbare (eigene, bei Admins alle) und nur
+    abgeschlossene: In laufende schreibt der Worker noch."""
+    ids = [int(i) for i in request.POST.getlist("ids") if i.isdigit()]
+    chosen = _visible(request).filter(pk__in=ids)
+    running = chosen.filter(status__in=(Lookup.Status.PENDING, Lookup.Status.COLLECTING, Lookup.Status.ANALYZING))
+    skipped = running.count()
+    done = chosen.exclude(pk__in=running.values("pk"))
+    deleted = done.count()
+    done.delete()
+    if deleted:
+        messages.info(request, f"{deleted} Analyse gelöscht." if deleted == 1 else f"{deleted} Analysen gelöscht.")
+    if skipped:
+        messages.info(request, f"{skipped} laufende Analyse(n) nicht gelöscht, bitte nach dem Abschluss erneut versuchen.")
+    return redirect("lookups:index")
 
 
 @csrf_exempt  # verändert nichts, füllt nur das Formular vor; POST kommt vom Teilen-Menü ohne Token

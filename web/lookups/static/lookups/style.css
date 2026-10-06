@@ -145,10 +145,35 @@ table.ports td.nw, table.ports th.nw { white-space: nowrap; }
 @media (max-width: 640px) { .table-wrap.keep { overflow-x: auto; } }
 table.ports td:first-child { white-space: nowrap; }
 
-.opt-date { display: grid; gap: 4px; margin-top: 10px; font-size: .9rem; max-width: 22rem; }
+.opt-date { display: grid; gap: 4px; margin-top: 10px; font-size: .9rem; }
+button.submit { margin-top: 14px; }
+@media (max-width: 600px) { button.submit { width: 100%; } }
 
 .sources-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-top: 2rem; }
 .sources-head[hidden] { display: none; }
 .sources-head h2 { margin: 0; }
 button.copy { padding: 4px 12px; font-size: .85rem; }
 .raw-tools { text-align: right; margin-top: 6px; }
+
+/* Verlauf: Auswahl zum Löschen (langer Druck auf eine Analyse oder "Auswählen") */
+.history-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
+.pick-bar { display: flex; align-items: center; gap: 8px; }
+button.small { padding: 4px 12px; font-size: .85rem; }
+button.danger { background: var(--high); }
+button:disabled { opacity: .5; cursor: default; }
+.history:not(.picking) [data-pick-count], .history:not(.picking) [data-pick-delete],
+.history:not(.picking) [data-pick-cancel], .history.picking [data-pick-start] { display: none; }
+.pick-hint { margin: 0 0 8px; font-size: .85rem; }
+.history.picking .pick-hint { display: none; }
+.history:not(.picking) .t-pick { display: none; }
+.t-pick input { width: auto; }
+[data-pick-row] { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
+.history.picking [data-pick-row] { cursor: pointer; }
+.history.picking tr.picked td { background: color-mix(in srgb, var(--accent) 12%, transparent); }
+@media (max-width: 640px) {
+  .history.picking .t-query a::after { content: none; }
+  .t-pick { position: absolute; top: 12px; right: 14px; }
+  .history.picking table.tiles tr { padding-right: 44px; }
+  .history.picking table.tiles tr.picked { outline: 2px solid var(--accent); background: color-mix(in srgb, var(--accent) 10%, var(--surface)); }
+  .history.picking tr.picked td { background: none; }
+}
