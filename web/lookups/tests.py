@@ -509,7 +509,7 @@ class LiveUpdateTests(TestCase):
         done = self.client.get(self.url).json()
         self.assertFalse(done["running"])
         self.assertIn("Kurzfazit", done["fragments"]["report"]["html"])
-        self.assertIn("Als PDF", done["fragments"]["actions"]["html"])
+        self.assertIn("Als PDF herunterladen", done["fragments"]["actions"]["html"])
 
     def test_other_user_and_anonymous_are_refused(self):
         self.assertEqual(self.client.get(self.url).status_code, 302)

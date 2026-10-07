@@ -1,8 +1,8 @@
 {% if not lookup.is_running %}
-  <div class="actions">
-    <a class="button" href="{% url 'lookups:pdf' lookup.pk %}">Als PDF</a>
-    <form method="post" action="{% url 'lookups:rerun' lookup.pk %}">{% csrf_token %}
-      <button class="secondary">Erneut analysieren</button>
-    </form>
-  </div>
+  <a class="icon" href="{% url 'lookups:pdf' lookup.pk %}" title="Als PDF herunterladen" aria-label="Als PDF herunterladen">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/><path d="M12 15V3"/></svg></a>
+  <form method="post" action="{% url 'lookups:rerun' lookup.pk %}">{% csrf_token %}
+    <button class="icon" title="Erneut analysieren" aria-label="Erneut analysieren">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg></button>
+  </form>
 {% endif %}

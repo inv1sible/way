@@ -119,8 +119,6 @@ header nav form { display: inline; }
   .copy-row { flex-direction: column; }
 }
 
-.actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 16px; }
-.actions form { margin: 0; }
 a.button { display: inline-block; font: inherit; padding: 10px 16px; border-radius: 6px; background: var(--accent); color: #fff; text-decoration: none; }
 button.secondary { background: var(--surface); color: var(--accent); border: 1px solid var(--accent); }
 
@@ -179,12 +177,6 @@ button:disabled { opacity: .5; cursor: default; }
 
 /* Notiz zu einer Analyse */
 .note { margin: 0 0 8px; font-style: italic; }
-details.note-edit { background: none; border: 0; padding: 0; margin: 0 0 16px; }
-details.note-edit summary { display: inline-block; list-style: none; padding: 4px 12px; font-size: .85rem; border-radius: 6px;
-  background: var(--surface); color: var(--accent); border: 1px solid var(--accent); }
-details.note-edit summary::-webkit-details-marker { display: none; }
-details.note-edit[open] summary { margin-bottom: 8px; }
-.note-form { display: flex; gap: 8px; }
 .note-tip { margin: 4px 0 0; font-size: .85rem; }
 .t-note { color: var(--muted); font-weight: 400; white-space: normal; word-break: normal; overflow-wrap: anywhere; }
 
@@ -196,3 +188,19 @@ h2 .count { color: var(--muted); font-weight: 400; }
 details.runs { margin: 0 0 16px; }
 details.runs ul { margin: 8px 0 0; padding-left: 18px; }
 details.runs li { margin: 4px 0; }
+
+/* Detailseite: Titel mit Symbolleiste (Notiz, PDF, erneut analysieren) */
+.title-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.title-row h1 { min-width: 0; }
+.toolbar, #l-actions { display: flex; gap: 6px; align-items: center; flex: none; }
+.toolbar { margin-top: .5rem; }
+.toolbar form { margin: 0; }
+.icon { display: inline-flex; align-items: center; justify-content: center; width: 38px; height: 38px; padding: 0;
+  border: 1px solid var(--border); border-radius: 8px; background: var(--surface); color: var(--accent); cursor: pointer; }
+.icon:hover { border-color: var(--accent); }
+.icon.on { background: var(--accent); color: #fff; border-color: var(--accent); }
+.icon svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.note-pop { width: min(32rem, calc(100vw - 32px)); padding: 16px; border: 1px solid var(--border); border-radius: 10px;
+  background: var(--surface); color: var(--text); }
+.note-pop::backdrop { background: rgb(0 0 0 / .35); }
+.note-form { display: flex; gap: 8px; margin-top: 8px; }
