@@ -1,82 +1,52 @@
 # Who Are You (WAY)
 
-Rufnummer oder IP-Adresse in die Web-UI eingeben und einen KI-Bericht mit Risikoeinschätzung erhalten.
-Die Daten werden ohne KI aus freien Quellen gesammelt, ein lokales LLM über Ollama bewertet sie.
+Selbst gehostetes OSINT-Werkzeug: Rufnummer, IP-Adresse oder Hostnamen eingeben und einen Bericht mit
+Risikoeinschätzung erhalten. Die Daten kommen ohne KI aus freien Quellen (Registries, DNS, Reputationsdienste,
+Websuche); ein lokales Sprachmodell über [Ollama](https://ollama.com) fasst sie zusammen. Nichts verlässt den
+eigenen Server außer den Abfragen an die Quellen selbst.
 
-## Dienste (docker compose)
+- **Rufnummern:** Land, Ortsnetz, Netzbetreiber, Maßnahmenliste der Bundesnetzagentur, Bewertungen und Fundstellen
+  im Netz (über eine selbst gehostete SearXNG-Suche).
+- **IP-Adressen und Hostnamen:** Netzinhaber, Standort, DNS, Reputation (VirusTotal, AbuseIPDB, CrowdSec,
+  GreyNoise, AlienVault OTX, abuse.ch, Spamhaus), Internet-Scan-Daten (Shodan, Censys); optional TLS-Zertifikat,
+  Web-Kopfzeilen und Portscan eigener Systeme.
+- **Verlauf:** Wiederholte Analysen derselben Abfrage werden gruppiert und verglichen (geänderte Adressen, Ports,
+  Reputation, Risiko). Optional ein Rückblick auf ein Datum (BGP- und Passive-DNS-Historie).
+- **Oberfläche:** Deutsch, mobil als installierbare Web-App (PWA) mit Teilen-Ziel, Live-Fortschritt, PDF-Export,
+  Notizen, Mehrbenutzer mit Einladungen.
 
-| Dienst | Aufgabe |
-|---|---|
-| `web` | Django-Web-UI (Gunicorn, Login, Verlauf, Admin unter `/admin/`) |
-| `worker` | Celery-Worker: fragt Quellen ab, lässt Bericht schreiben |
-| `tools` | Lokale Werkzeuge (whois, dig, openssl, curl) hinter einer schmalen Token-API; eigenes Netz ohne Datenbank, nur öffentliche Ziele |
-| `db` | PostgreSQL |
-| `redis` | Message-Broker für Celery |
-| `searxng` | Selbst gehostete Metasuche für Rufnummern |
+## Schnellstart
 
-Ollama läuft extern (`OLLAMA_URL`, Standard `http://192.168.1.139:11434`, Modell `qwen3:8b`).
-
-## Quellen
-
-- **Rufnummer:** libphonenumber (Land, Ortsnetz, Typ, ursprünglicher Netzbetreiber), Nummernbereiche der
-  Bundesnetzagentur, Ping-Anruf-Heuristik, Websuche über SearXNG (nur Treffer, die die Nummer enthalten).
-- **IP-Adresse:** Reverse DNS, RDAP (Netzinhaber, Abuse-Kontakt), ip-api.com (Geo/ASN, Hosting/Proxy),
-  Shodan InternetDB, GreyNoise Community, Tor-Exit-Liste, Spamhaus ZEN, optional AbuseIPDB (`ABUSEIPDB_KEY`) und
-  Censys (`CENSYS_TOKEN`, Platform-API; Gratis-Tarif: nur Nachschläge, 100 Credits/Monat, deshalb Zwischenspeicher und
-  Monatsobergrenze `CENSYS_MONTHLY_LIMIT`).
-
-## Start
+Voraussetzungen: Docker mit Compose und ein erreichbarer Ollama-Server mit einem Modell (getestet mit `qwen3:8b`).
 
 ```sh
-cp .env.example .env    # Secrets und Passwörter setzen
+cp .env.example .env    # Secrets, Passwörter, OLLAMA_URL setzen; API-Keys optional
 docker compose up -d --build
 ```
 
 Die Web-UI läuft unter `http://<host>:${APP_PORT}`. Der Benutzer aus `DJANGO_SUPERUSER_*` wird beim ersten
-Start angelegt; weitere Benutzer unter `/admin/`.
+Start angelegt, weitere Benutzer lädt man unter "Einladungen" ein.
+
+## Dokumentation
+
+| Dokument | Inhalt |
+|---|---|
+| [docs/bedienung.md](docs/bedienung.md) | Suche, Optionen, Verlauf, Detailseite, Notizen, Teilen auf dem Handy |
+| [docs/quellen.md](docs/quellen.md) | Alle Datenquellen, welche einen API-Key brauchen und wo es ihn gibt |
+| [docs/betrieb.md](docs/betrieb.md) | Installation, Konfiguration (`.env`), Reverse Proxy, Ollama, Updates, Backups |
+| [docs/architektur.md](docs/architektur.md) | Dienste, Ablauf einer Analyse, Datenmodell, Live-Aktualisierung |
+| [docs/sicherheit.md](docs/sicherheit.md) | Abfragestufen, `tools`-Container, eigene Systeme, Konten, Opsec |
+| [TODO.md](TODO.md) | Offene Punkte und Pläne |
 
 ## Tests
 
 ```sh
-docker compose run --rm web python manage.py test lookups
+docker compose run --rm web python manage.py test lookups accounts
+docker compose run --rm --no-deps -e TOOLS_TOKEN=x tools python -m unittest -v
 ```
 
-## Nach Codeänderungen am Modell
+## Rechtliches
 
-```sh
-docker compose run --rm -u "$(id -u)" -v "$PWD/web:/app" web python manage.py makemigrations
-```
-
-## Abfragestufen
-
-| Stufe | Kontakt zum Ziel | Quellen |
-|---|---|---|
-| passiv (Standard) | keiner; nur Registries, DNS, Drittdienste | RDAP, WHOIS, ASN (dig/Team Cymru), DNS-Einträge, Reputationsdienste |
-| leise aktiv (nur Admins, Häkchen im Suchfeld) | ein normaler Zugriff, erscheint im Log des Ziels | TLS-Zertifikat (openssl), Web-Kopfzeilen (curl, Port 80 und 443) |
-| Portscan (nur Admins, nur eigene Systeme) | Verbindungsversuche auf 1000 Ports | nmap (`-sT`, Top-1000-TCP, leichte Diensterkennung); auffällige Ports werden fest bewertet und heben das Risiko an |
-
-**Eigene Systeme:** Der Portscan läuft nur für Ziele, die im Admin unter "Eigene Systeme" stehen (öffentliche
-IP, Netz bis /22 bzw. /56, oder exakter Hostname). Ein Hostname beweist nicht, wem die Adresse gehört, auf die er
-zeigt (CDN, Cloud, geänderter DNS-Eintrag): Bei Hostnamen ist deshalb die AS-Nummer des Netzes Pflicht, und
-gescannt wird nur, wenn alle aufgelösten Adressen in diesem Netz liegen (sonst wird der Scan abgelehnt). Die Anwendung prüft das beim Absenden und noch einmal im
-Worker; der `tools`-Container selbst kennt die Liste nicht, begrenzt aber Ziel (nur öffentliche Adressen),
-Profil (fest) und Parallelität (ein Scan zur Zeit).
-
-Der `tools`-Container lehnt alles ab, was keine öffentliche Adresse ist (LAN, Loopback, Docker-Netz,
-Link-Local), und erlaubt nur die Ports 80, 443, 8080 und 8443. Er verbindet sich nur zu IP-Adressen,
-die der Worker bereits aufgelöst hat (kein DNS-Rebinding). Der Portscan ist Stufe 2 und nur für eigene Systeme freigegeben.
-
-```sh
-docker compose run --rm --no-deps -e TOOLS_TOKEN=x tools python -m unittest -v   # Tests des tools-Dienstes
-```
-
-Offene Punkte und Pläne (VPN, Opsec, weitere Quellen): siehe [TODO.md](TODO.md).
-
-## Stand (Rückblick auf ein Datum)
-
-Im Suchfeld lässt sich optional ein Datum wählen. Dann kommen dazu: BGP-Historie (RIPEstat: welches Netz hat die
-IP an dem Tag angekündigt), Passive DNS (AlienVault OTX: Namen auf der IP bzw. Adressen des Namens, mit
-Zeitleiste) und der Verlauf der eigenen früheren Analysen derselben Abfrage (z. B. wechselnde Adressen eines
-Dynamic-DNS-Namens; nur die eigenen Analysen des Nutzers, auch für Admins, ohne Eigentümer gar nicht). Passive DNS ist lückenhaft; wer eine dynamische
-Adresse zu einem Zeitpunkt nutzte, weiß nur der Provider. Nur bereits gespeicherte Analysen reichen zurück:
-Die Historie wächst ab der ersten Analyse einer Abfrage.
+Gedacht für die Prüfung unbekannter Anrufer und eigener Systeme. Aktive Abfragen (TLS, Web-Kopfzeilen) und
+Portscans fremder Ziele können je nach Land unzulässig sein; der Portscan ist deshalb auf eingetragene eigene
+Systeme beschränkt. Die Nutzungsbedingungen der einzelnen Quellen gelten.
