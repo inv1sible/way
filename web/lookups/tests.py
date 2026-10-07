@@ -195,6 +195,22 @@ class ViewTests(TestCase):
         page = self.client.get(reverse("lookups:detail", args=[current.pk]))
         self.assertEqual([run.pk for run in page.context["runs"]], [old.pk])
         self.assertContains(page, reverse("lookups:detail", args=[old.pk]))
+        self.assertContains(page, "erste Analyse")
+
+    def test_each_earlier_run_shows_its_changes_against_the_one_before(self):
+        def run(score, risk):
+            return Lookup.objects.create(kind="ip", query="203.0.113.7", created_by=self.user, status="done", risk=risk,
+                                         sources=[{"source": "AbuseIPDB", "ok": True,
+                                                   "data": {"abuseConfidenceScore": score, "totalReports": 0}}])
+        run(0, "niedrig")
+        second = run(40, "mittel")
+        current = run(40, "mittel")
+        self.client.force_login(self.user)
+        page = self.client.get(reverse("lookups:detail", args=[current.pk]))
+        changes = {r.pk: r.changes for r in page.context["runs"]}
+        self.assertEqual(changes[second.pk], [("risiko", "niedrig", "mittel"), ("abuseipdb_score", "0", "40")])
+        self.assertContains(page, "2 Änderungen")
+        self.assertContains(page, "Öffnen")
 
     def test_history_list_sorts_runs_of_the_same_minute_alphabetically(self):
         from django.utils import timezone

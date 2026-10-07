@@ -14,7 +14,7 @@ from django.views.decorators.cache import cache_control, never_cache
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST
 
-from . import ownership, pdf
+from . import historie, ownership, pdf
 from .detect import detect, extract, vcard_text
 from .models import Lookup
 from .templatetags.report_tags import fundstellen, history_data, scan_data
@@ -166,11 +166,25 @@ def _fragments(request, lookup):
 
 def _other_runs(request, lookup):
     """Weitere Läufe derselben Abfrage desselben Eigentümers, frisch aus der Datenbank (der im Bericht
-    gespeicherte Verlauf kann auf inzwischen gelöschte Analysen zeigen)."""
-    runs = _visible(request).filter(kind=lookup.kind, query=lookup.query).exclude(pk=lookup.pk)
+    gespeicherte Verlauf kann auf inzwischen gelöschte Analysen zeigen). Jeder Lauf trägt seine Änderungen
+    gegenüber dem vorigen noch vorhandenen fertigen Lauf (run.changes; None beim ersten)."""
+    runs = _visible(request).filter(kind=lookup.kind, query=lookup.query)
     if lookup.created_by_id is None:
-        return runs.filter(created_by__isnull=True)
-    return runs.filter(created_by_id=lookup.created_by_id)
+        runs = runs.filter(created_by__isnull=True)
+    else:
+        runs = runs.filter(created_by_id=lookup.created_by_id)
+    previous = None
+    runs = list(runs.order_by("created_at"))
+    for run in runs:
+        run.changes = None
+        if run.status != Lookup.Status.DONE:
+            continue
+        if previous is not None:
+            run.changes = historie.compare(previous.sources, run.sources)
+            if previous.risk and run.risk and previous.risk != run.risk:
+                run.changes.insert(0, ("risiko", previous.risk, run.risk))
+        previous = run
+    return [run for run in reversed(runs) if run.pk != lookup.pk]
 
 
 def detail(request, pk):

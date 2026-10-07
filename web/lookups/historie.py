@@ -89,6 +89,12 @@ def _changed(before, after):
     return sorted(key for key in set(before) & set(after) if before[key] != after[key])
 
 
+def compare(before_sources, after_sources):
+    """Änderungen zwischen zwei Analysen als Liste (Merkmal, vorher, jetzt)."""
+    before, after = facts(before_sources), facts(after_sources)
+    return [(key, _show(before[key]), _show(after[key])) for key in _changed(before, after)]
+
+
 def own_history(lookup, sources, as_of=None):
     if lookup.created_by_id is None:
         return None

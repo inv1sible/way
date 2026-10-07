@@ -33,14 +33,27 @@
 {% if runs %}
 <details class="runs">
   <summary>Weitere Analysen dieser Abfrage ({{ runs|length }})</summary>
-  <ul>
-    {% for run in runs %}
-    <li><a href="{% url 'lookups:detail' run.pk %}">{{ run.created_at|date:"d.m.Y H:i" }}</a>
+  {% for run in runs %}
+  <details class="run">
+    <summary>{{ run.created_at|date:"d.m.Y H:i" }}
       {% if run.created_at > lookup.created_at %}<span class="muted">(neuer)</span>{% endif %}
       · {% if run.risk %}<span class="risk risk-{{ run.risk }}">Risiko {{ run.risk }}</span>{% else %}{{ run.get_status_display }}{% endif %}
-      {% if run.as_of %}<span class="muted">· Stand {{ run.as_of|date:"d.m.Y" }}</span>{% endif %}</li>
-    {% endfor %}
-  </ul>
+      {% if run.as_of %}<span class="muted">· Stand {{ run.as_of|date:"d.m.Y" }}</span>{% endif %}
+      <span class="muted">· {% if run.changes is None %}erste Analyse{% elif run.changes %}{{ run.changes|length }} Änderung{{ run.changes|length|pluralize:"en" }}{% else %}unverändert{% endif %}</span>
+    </summary>
+    {% if run.changes %}
+    <ul class="changes">
+      {% for key, before, after in run.changes %}<li><b>{{ key }}</b>: {{ before }} → {{ after }}</li>{% endfor %}
+    </ul>
+    {% elif run.changes is None %}
+    <p class="muted">Keine frühere Analyse zum Vergleich.</p>
+    {% else %}
+    <p class="muted">Gegenüber der Analyse davor hat sich nichts Messbares geändert.</p>
+    {% endif %}
+    <p class="run-open">{% if run.note %}<span class="muted">Notiz: {{ run.note }}</span>{% endif %}
+      <a class="button small" href="{% url 'lookups:detail' run.pk %}">Öffnen</a></p>
+  </details>
+  {% endfor %}
 </details>
 {% endif %}
 
