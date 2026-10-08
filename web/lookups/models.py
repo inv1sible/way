@@ -1,6 +1,12 @@
 from django.conf import settings
 from django.db import models
 
+from .detect import HOSTNAME
+
+
+def default_active_ports():
+    return [443, 8443]
+
 
 class Lookup(models.Model):
     class Kind(models.TextChoices):
@@ -20,6 +26,11 @@ class Lookup(models.Model):
         MEDIUM = "mittel", "mittel"
         HIGH = "hoch", "hoch"
         UNCLEAR = "unklar", "unklar"
+
+    class ActiveProfile(models.TextChoices):
+        FRITZBOX = "fritzbox", "FRITZ!Box"
+        GENERIC_ROUTER = "generic-router", "Generischer Router"
+        SPEEDPORT = "speedport", "Speedport"
 
     created_at = models.DateTimeField("erstellt", auto_now_add=True)
     finished_at = models.DateTimeField("abgeschlossen", null=True, blank=True)
@@ -42,8 +53,24 @@ class Lookup(models.Model):
         help_text="nmap-Portscan; nur für Ziele aus der Liste der eigenen Systeme.",
     )
     active_probe = models.BooleanField(
-        "leise aktiv", default=False,
-        help_text="Ziel direkt kontaktieren (TLS-Zertifikat, Web-Kopfzeilen); erscheint im Log des Ziels.",
+        "leicht aktiv", default=False,
+        help_text="Berechtigung bestätigt; Ziel direkt für den FRITZ!Box-Fingerprint kontaktieren.",
+    )
+    active_ports = models.JSONField(
+        "aktive Web-Ports", default=default_active_ports,
+        help_text="Höchstens vier explizit freigegebene Ports; 80/8080 per HTTP, alle anderen per HTTPS.",
+    )
+    active_timeout = models.PositiveSmallIntegerField(
+        "aktiver Timeout", default=8,
+        help_text="Timeout je aktiver Anfrage in Sekunden (2 bis 20).",
+    )
+    active_profile = models.CharField(
+        "aktives Profil", max_length=20, choices=ActiveProfile.choices, default=ActiveProfile.FRITZBOX,
+        help_text="Ausdrücklich ausgewähltes, nicht destruktives aktives Prüfprofil.",
+    )
+    enrichment_of = models.ForeignKey(
+        "self", null=True, blank=True, on_delete=models.SET_NULL, related_name="+", editable=False,
+        verbose_name="angereichert aus",
     )
 
     class Meta:
@@ -74,6 +101,16 @@ class OwnedTarget(models.Model):
                   "gehört, auf die er zeigt; gescannt wird nur, wenn alle seine Adressen in diesen Netzen liegen. "
                   "Die AS-Nummer steht im ASN-Block einer Analyse.",
     )
+    provider = models.CharField(
+        "Provider/Netzbetreiber", max_length=200, blank=True,
+        help_text="Nur dokumentarisch: aus der Analyse übernommener Provider oder Netzname. Die aktive Prüfung "
+                  "vergleicht technisch AS-Nummern, nicht diesen Freitext.",
+    )
+    dns_name = models.CharField(
+        "DNS-Name", max_length=255, blank=True,
+        help_text="Optionaler, ausdrücklich bestätigter Hostname für eine IP-Adresse. Bei aktiven IP-Prüfungen "
+                  "muss er weiterhin auf die geprüfte IP auflösen.",
+    )
     note = models.CharField("Notiz", max_length=200, blank=True)
     created_at = models.DateTimeField("eingetragen", auto_now_add=True)
 
@@ -91,6 +128,11 @@ class OwnedTarget(models.Model):
         from .ownership import parse, parse_asns
 
         kind, self.value = parse(self.value)
+        self.dns_name = self.dns_name.strip().lower().rstrip(".")
+        if self.dns_name and not HOSTNAME.fullmatch(self.dns_name):
+            raise ValidationError({"dns_name": "Bitte einen gültigen Hostnamen ohne URL angeben."})
+        if kind == "host" and self.dns_name:
+            raise ValidationError({"dns_name": "Für einen Hostname-Eintrag ist kein zusätzlicher DNS-Name nötig."})
         asns = parse_asns(self.asn)
         if kind == "host" and not asns:
             raise ValidationError({"asn": "Für Hostnamen ist die AS-Nummer des Netzes erforderlich."})

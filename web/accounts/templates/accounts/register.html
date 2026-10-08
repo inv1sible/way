@@ -1,12 +1,13 @@
 {% extends "base.html" %}
-{% block title %}Registrieren · Who Are You{% endblock %}
+{% load ui_tags %}
+{% block title %}{% ui 'Registrieren' 'Register' %} · Who Are You{% endblock %}
 {% block content %}
 <form method="post" class="card login">{% csrf_token %}
-  <h1>Konto anlegen</h1>
-  <p class="muted">Einladung für <strong>{{ invitation.email }}</strong></p>
+  <h1>{% ui 'Konto anlegen' 'Create account' %}</h1>
+  <p class="muted">{% ui 'Einladung für' 'Invitation for' %} <strong>{{ invitation.email }}</strong></p>
   {% for error in form.non_field_errors %}<p class="error">{{ error }}</p>{% endfor %}
   <label>{{ form.password1.label }} {{ form.password1 }}</label>{{ form.password1.errors }}
   <label>{{ form.password2.label }} {{ form.password2 }}</label>{{ form.password2.errors }}
-  <button>Registrieren</button>
+  <button>{% ui 'Registrieren' 'Register' %}</button>
 </form>
 {% endblock %}

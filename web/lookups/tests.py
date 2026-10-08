@@ -5,14 +5,15 @@ from django.contrib.auth import get_user_model
 from django.db import connection
 from django.test import SimpleTestCase, TestCase, TransactionTestCase, override_settings
 from django.urls import reverse
+from django.utils import translation
 
 from . import llm
-from .collectors import bnetza, censys, history, host, ip, phone, threatintel
+from .collectors import bnetza, censys, fritzbox, history, host, ip, phone, router, speedport, threatintel
 from .collectors import tools as tools_client
 from .detect import detect, extract
 from .models import Lookup, OwnedTarget
 from . import historie, ownership
-from .templatetags.report_tags import markdown
+from .templatetags.report_tags import markdown, report_parts
 
 
 @override_settings(OSINT_DEFAULT_REGION="DE")
@@ -61,12 +62,101 @@ class PhoneAnalyzeTests(SimpleTestCase):
     def test_ping_call_country_hint(self):
         self.assertIn("Ping-Anruf", phone.analyze("+21671123456")["hinweise"][0])
 
+    def test_central_number_candidates_are_explicit_hypotheses(self):
+        candidates = phone.central_candidates("+49301234567")
+        self.assertTrue(candidates)
+        self.assertTrue(all(candidate["anzahl_entfernter_endziffern"] in {4, 5, 6} for candidate in candidates))
+        self.assertTrue(all(len(candidate["ziffern"]) >= 2 for candidate in candidates))
+
+
+class StemNumberTests(SimpleTestCase):
+    TEST_NUMBER = "+49301234567"
+    TEST_LONG_NUMBER = "+493012345678"
+
+    def test_published_central_number_documents_stem_but_not_specific_extension(self):
+        hit = {
+            "titel": "Impressum | Beispielorganisation",
+            "url": "https://example.invalid/impressum",
+            "auszug": "Beispielorganisation. Telefon: 030 12-0.",
+        }
+
+        async def fake_searx(client, query, limit=10, pageno=1, meta=None):
+            return [hit]
+
+        with mock.patch.object(phone.search, "searx", fake_searx):
+            stem = asyncio.run(phone.central_office_search(None, self.TEST_NUMBER))
+        self.assertIn("030 12", [candidate["stammnummer"] for candidate in phone.stem_candidates(self.TEST_NUMBER)])
+        self.assertNotIn("kandidaten", stem)
+        self.assertEqual(stem["evidenz"][0]["veroeffentlichteNummer"], "030 12-0")
+        result = phone.stem_attribution(self.TEST_NUMBER, [], stem)
+        self.assertEqual(result["vermuteteStammnummer"]["organisation"], "Beispielorganisation")
+        self.assertEqual(result["moeglicheDurchwahl"], "34567")
+        self.assertIsNone(result["belegterAnschlussinhaber"])
+
+    def test_stem_candidates_use_plausible_extension_lengths(self):
+        candidates = phone.stem_candidates(self.TEST_LONG_NUMBER)
+        by_extension = {candidate["entfernte_endziffern"]: candidate for candidate in candidates}
+        self.assertEqual(by_extension["45678"]["stammnummer"], "030 123")
+        self.assertEqual(set(item["anzahl_entfernter_endziffern"] for item in candidates), {4, 5, 6})
+
+    def test_five_digit_extension_and_two_digit_stem_are_matched(self):
+        hit = {
+            "titel": "Beispielorganisation - Kontakt",
+            "url": "https://example.invalid/kontakt",
+            "auszug": "So erreichen Sie die Beispielorganisation. Telefon: 030/12-13083.",
+        }
+
+        async def fake_searx(client, query, limit=10, pageno=1, meta=None):
+            return [hit]
+
+        with mock.patch.object(phone.search, "searx", fake_searx):
+            stem = asyncio.run(phone.central_office_search(None, self.TEST_NUMBER))
+        self.assertEqual(phone.stem_candidates(self.TEST_NUMBER)[0]["stammnummer"], "030 12")
+        self.assertEqual(phone.stem_candidates(self.TEST_NUMBER)[0]["entfernte_endziffern"], "34567")
+        result = phone.stem_attribution(self.TEST_NUMBER, [], stem)
+        self.assertEqual(result["vermuteteStammnummer"]["organisation"], "Beispielorganisation")
+        self.assertEqual(result["moeglicheDurchwahl"], "34567")
+
+    def test_longer_published_extension_does_not_create_a_false_match(self):
+        longer_extension_hit = {
+            "titel": "Andere Beispielorganisation - Kontakt",
+            "url": "https://other.example.invalid/kontakt",
+            "auszug": "Impressum der anderen Beispielorganisation. Telefon 030 123 999999",
+        }
+
+        async def fake_searx(client, query, limit=10, pageno=1, meta=None):
+            return [longer_extension_hit]
+
+        with mock.patch.object(phone.search, "searx", fake_searx):
+            stem = asyncio.run(phone.central_office_search(None, self.TEST_NUMBER))
+        self.assertEqual(stem["evidenz"], [])
+
+    def test_mobile_numbers_get_no_organization_stem_hypotheses(self):
+        self.assertEqual(phone.stem_candidates("+491701234567"), [])
+
+    def test_competing_prefix_without_contact_evidence_is_not_an_assignment(self):
+        stem = {"evidenz": [{
+            "organisation": "Unklare Seite", "stammnummer": "030 12", "veroeffentlichteNummer": "030 12-0",
+            "moeglicheDurchwahl": "34567", "sourceUrl": "https://example.invalid/info", "fundstelle": "030 12-0",
+            "abgerufenAm": "2026-10-08T00:00:00+00:00", "kontaktOderImpressumSignal": False,
+        }]}
+        result = phone.stem_attribution(self.TEST_NUMBER, [], stem)
+        self.assertEqual(result["belegteOrganisationszuordnung"], [])
+        self.assertIsNone(result["vermuteteStammnummer"])
+
+    def test_no_source_evidence_means_no_assignment(self):
+        result = phone.stem_attribution(self.TEST_NUMBER, [], {"evidenz": []})
+        self.assertEqual(result["belegteOrganisationszuordnung"], [])
+        self.assertIsNone(result["belegterAnschlussinhaber"])
+
 
 class IpTests(SimpleTestCase):
     def test_private_address_skips_external_sources(self):
         results = asyncio.run(ip.collect(client=None, ip="192.168.1.10"))
-        self.assertEqual(len(results), 1)
+        self.assertEqual(len(results), 2)
         self.assertFalse(results[0]["data"]["oeffentlich"])
+        self.assertEqual(results[1]["source"], fritzbox.SOURCE)
+        self.assertFalse(results[1]["data"]["target"]["publiclyRoutable"])
 
     def test_cgnat_hint(self):
         self.assertIn("Carrier-Grade-NAT", ip.classify("100.64.3.4")["hinweis"])
@@ -81,6 +171,23 @@ class IpTests(SimpleTestCase):
         self.assertEqual(contacts[0]["name"], "Example GmbH")
         self.assertEqual(contacts[1], {"rollen": ["abuse"], "name": None, "email": "abuse@example.net", "handle": None})
 
+    def test_expected_ip_asn_binding_fails_closed_on_a_changed_network(self):
+        sources = [{"source": "ASN und Netzbetreiber (dig, Team Cymru)", "ok": True,
+                    "data": {"asn": ["AS3320"]}}]
+        verified = ip.verify_ip_binding("8.8.4.4", {"AS3320"}, sources)
+        self.assertEqual(verified["originAsns"], ["AS3320"])
+        with self.assertRaisesRegex(RuntimeError, "erwartet"):
+            ip.verify_ip_binding("8.8.4.4", {"AS64500"}, sources)
+
+    def test_ip_dns_binding_requires_the_exact_ip_and_public_answers(self):
+        answer = [(None, None, None, "", ("8.8.4.4", 0))]
+        with mock.patch("socket.getaddrinfo", return_value=answer):
+            binding = asyncio.run(ip.verify_ip_dns_binding("8.8.4.4", "edge.example.net"))
+        self.assertEqual(binding["hostname"], "edge.example.net")
+        other = [(None, None, None, "", ("8.8.8.8", 0))]
+        with mock.patch("socket.getaddrinfo", return_value=other), self.assertRaisesRegex(RuntimeError, "nicht auf"):
+            asyncio.run(ip.verify_ip_dns_binding("8.8.4.4", "edge.example.net"))
+
 
 class HostTests(SimpleTestCase):
     def test_dyndns_hint_and_ip_analysis(self):
@@ -92,7 +199,8 @@ class HostTests(SimpleTestCase):
         self.assertEqual(dns["analysierte_adresse"], "192.168.178.1")
         self.assertEqual(
             [r["source"] for r in results],
-            ["DNS-Auflösung", "DNS-Einträge (dig)", "WHOIS Domain (lokal)", "Adressklassifizierung"],
+            ["DNS-Auflösung", "DNS-Einträge (dig)", "WHOIS Domain (lokal)", "Adressklassifizierung",
+             "FRITZ!Box Fingerprint"],
         )
 
     def test_unresolvable_host_is_reported(self):
@@ -106,12 +214,44 @@ class HostTests(SimpleTestCase):
 class ReportTests(SimpleTestCase):
     def test_extract_risk(self):
         self.assertEqual(llm.extract_risk("## Risikoeinschätzung\n**Risiko:** Hoch\nweil"), "hoch")
+        self.assertEqual(llm.extract_risk("## Risk assessment\nRisk: medium\nbecause"), "mittel")
         self.assertEqual(llm.extract_risk("nichts"), "")
+
+    def test_prompt_requires_equivalent_german_and_english_reports(self):
+        self.assertIn("# Deutsch", llm.SYSTEM_PROMPT)
+        self.assertIn("# English", llm.SYSTEM_PROMPT)
+        self.assertIn("Risk: low", llm.SYSTEM_PROMPT)
+        self.assertIn("übereinstimmen", llm.SYSTEM_PROMPT)
 
     def test_markdown_escapes_html(self):
         html = markdown("## Titel\n<script>alert(1)</script>")
         self.assertIn("<h2>Titel</h2>", html)
         self.assertNotIn("<script>", html)
+
+    def test_bilingual_report_is_split_for_language_switch(self):
+        report = ("# Deutsch\n## Kurzfazit\nDeutscher Text.\n\n"
+                  "# English\n## Executive summary\nEnglish text.")
+        parts = report_parts(report)
+        self.assertTrue(parts["bilingual"])
+        self.assertIn("Deutscher Text", parts["de"])
+        self.assertIn("English text", parts["en"])
+        self.assertNotIn("# English", parts["de"])
+
+    def test_legacy_report_remains_visible_without_switch(self):
+        report = "## Kurzfazit\nNur Deutsch."
+        self.assertEqual(report_parts(report), {"bilingual": False, "single": report})
+
+    def test_negative_fritz_fingerprint_is_excluded_from_report_prompt(self):
+        negative = {
+            "source": "FRITZ!Box Fingerprint", "ok": True,
+            "data": {"classification": {"likelyFritzBox": False, "confidence": "none"}},
+        }
+        positive = {
+            "source": "FRITZ!Box Fingerprint", "ok": True,
+            "data": {"classification": {"likelyFritzBox": True, "confidence": "high"}},
+        }
+        self.assertNotIn("FRITZ!Box Fingerprint", llm.build_prompt("ip", "8.8.8.8", [negative]))
+        self.assertIn("FRITZ!Box Fingerprint", llm.build_prompt("ip", "8.8.8.8", [positive]))
 
 
 class ViewTests(TestCase):
@@ -122,6 +262,17 @@ class ViewTests(TestCase):
         response = self.client.get(reverse("lookups:index"))
         self.assertEqual(response.status_code, 302)
         self.assertIn(reverse("login"), response["Location"])
+
+    def test_staff_navigation_uses_burger_menu_and_sign_out_icon(self):
+        self.user.is_staff = True
+        self.user.save(update_fields=["is_staff"])
+        self.client.force_login(self.user)
+        page = self.client.get(reverse("lookups:index"))
+        self.assertContains(page, '<details class="admin-menu">', html=False)
+        self.assertContains(page, reverse("accounts:invitations"))
+        self.assertContains(page, reverse("admin:index"))
+        self.assertContains(page, 'aria-label="Abmelden"', html=False)
+        self.assertNotContains(page, '<button class="link">Abmelden</button>', html=False)
 
     def test_submit_creates_lookup_and_queues_task(self):
         self.client.force_login(self.user)
@@ -364,6 +515,7 @@ class WebSearchTests(SimpleTestCase):
         self.assertEqual(queries, [('"069 90009123"', 1), ('"+49 69 90009123"', 1)])  # Seite 2 nur bei >= 5 Treffern
         self.assertEqual(result["suchmaschinen_mit_ergebnissen"], ["bing"])
         self.assertEqual(result["gestoerte_suchmaschinen"], {"google": "access denied"})
+        self.assertNotIn("abfragevarianten", result)
 
     def test_all_queries_failing_is_an_error(self):
         async def broken(client, query, limit=10, pageno=1, meta=None):
@@ -371,6 +523,25 @@ class WebSearchTests(SimpleTestCase):
         with mock.patch.object(phone.search, "searx", broken), mock.patch.object(phone, "SEARCH_PAUSE", 0), \
                 self.assertRaises(RuntimeError):
             asyncio.run(phone.web_search(None, "+496990009123"))
+
+    def test_adaptive_phone_research_shares_a_three_query_budget(self):
+        queries = []
+
+        async def fake_searx(client, query, limit=10, pageno=1, meta=None):
+            queries.append(query)
+            return []
+
+        async def go():
+            budget = phone.SearchBudget()
+            direct = await phone.web_search(None, "+49301234567", budget)
+            await phone.central_office_search(None, "+49301234567", budget, direct["treffer"])
+            await phone.spam_portals(None, "+49301234567", budget)
+            return budget
+
+        with mock.patch.object(phone.search, "searx", fake_searx), mock.patch.object(phone, "SEARCH_PAUSE", 0):
+            budget = asyncio.run(go())
+        self.assertEqual((budget.used, len(queries)), (3, 3))
+        self.assertEqual(queries[1], "0301234567")
 
     def test_parse_clever_dialer(self):
         page = ("<title>06990009123 &#9989; Infos zur Telefonnummer aus Frankfurt am Main</title><body>"
@@ -460,6 +631,39 @@ class PdfTests(TestCase):
         # Das Markdown-Bild ging an den Blocker statt ans Netz
         self.assertIn("http://192.0.2.1/tracker.png", [c.args[0] for c in blocker.call_args_list])
 
+    def test_pdf_uses_requested_global_language(self):
+        self.client.force_login(self.user)
+        from . import pdf
+        with mock.patch.object(pdf, "render", side_effect=lambda *_: translation.get_language().encode()) as render:
+            response = self.client.get(f"{reverse('lookups:pdf', args=[self.lookup.pk])}?language=en")
+        self.assertEqual(response.content, b"en")
+        self.assertEqual(response["Content-Language"], "en")
+        self.assertIn("-en-", response["Content-Disposition"])
+        render.assert_called_once()
+
+    def test_pdf_hides_negative_fritz_fingerprint(self):
+        from django.template.loader import render_to_string
+        self.lookup.sources.append({
+            "source": "FRITZ!Box Fingerprint", "ok": True,
+            "data": {"classification": {"likelyFritzBox": False, "confidence": "none"}},
+        })
+        with translation.override("de"):
+            html = render_to_string("lookups/report_pdf.html", {
+                "lookup": self.lookup, "generated_at": self.lookup.created_at, "scan": None, "history": None,
+            })
+        self.assertNotIn("FRITZ!Box Fingerprint", html)
+
+    def test_pdf_lists_sources_alphabetically(self):
+        from django.template.loader import render_to_string
+        self.lookup.sources = [
+            {"source": "Zulu provider", "ok": True, "data": {}},
+            {"source": "Alpha provider", "ok": True, "data": {}},
+        ]
+        html = render_to_string("lookups/report_pdf.html", {
+            "lookup": self.lookup, "generated_at": self.lookup.created_at, "scan": None, "history": None,
+        })
+        self.assertLess(html.index("Alpha provider"), html.index("Zulu provider"))
+
     def test_external_resources_are_blocked(self):
         from . import pdf
         fetcher = pdf.BlockingFetcher(allowed_protocols=())
@@ -510,6 +714,16 @@ class LiveUpdateTests(TestCase):
         self.assertIn("1 Quelle abgefragt", data["fragments"]["progress"]["html"])
         self.assertEqual(data["fragments"]["actions"]["html"].strip(), "")  # läuft noch: keine Buttons
 
+    def test_status_sorts_provider_display_alphabetically(self):
+        self.lookup.sources.extend([
+            {"source": "Zulu provider", "ok": True, "data": {}},
+            {"source": "Alpha provider", "ok": True, "data": {}},
+        ])
+        self.lookup.save(update_fields=["sources"])
+        self.client.force_login(self.user)
+        keys = [source["key"] for source in self.client.get(self.url).json()["sources"]]
+        self.assertEqual(keys, ["Alpha provider", "Reverse DNS", "Zulu provider"])
+
     def test_unchanged_revision_skips_rendering(self):
         self.client.force_login(self.user)
         rev = self.client.get(self.url).json()["rev"]
@@ -526,6 +740,82 @@ class LiveUpdateTests(TestCase):
         self.assertFalse(done["running"])
         self.assertIn("Kurzfazit", done["fragments"]["report"]["html"])
         self.assertIn("Als PDF herunterladen", done["fragments"]["actions"]["html"])
+
+    def test_bilingual_report_uses_global_language(self):
+        report = ("# Deutsch\n## Kurzfazit\nDeutscher Text.\n\n"
+                  "# English\n## Executive summary\nEnglish text.")
+        Lookup.objects.filter(pk=self.lookup.pk).update(status="done", report_md=report)
+        self.client.force_login(self.user)
+        html = self.client.get(self.url).json()["fragments"]["report"]["html"]
+        self.assertIn('lang="de"', html)
+        self.assertIn("Deutscher Text", html)
+        self.assertNotIn("English text", html)
+        self.client.cookies["django_language"] = "en"
+        english = self.client.get(self.url).json()["fragments"]["report"]["html"]
+        self.assertIn('lang="en"', english)
+        self.assertIn("English text", english)
+        self.assertNotIn("Deutscher Text", english)
+
+    def test_dynamic_hostname_binding_has_no_separate_report_box(self):
+        self.lookup.kind = "host"
+        self.lookup.query = "router.example.org"
+        self.lookup.sources.append({
+            "source": host.BINDING_SOURCE, "ok": True,
+            "data": {"hostname": "router.example.org", "bindingIsIndirect": True},
+        })
+        self.lookup.save(update_fields=["kind", "query", "sources"])
+        self.client.force_login(self.user)
+        german = self.client.get(self.url).json()["fragments"]["report"]["html"]
+        self.assertNotIn("Dynamische Zielbindung", german)
+        self.client.cookies["django_language"] = "en"
+        english = self.client.get(self.url).json()["fragments"]["report"]["html"]
+        self.assertNotIn("Dynamic target binding", english)
+
+    def test_passive_hostname_has_no_separate_report_box(self):
+        self.lookup.kind = "host"
+        self.lookup.query = "router.example.org"
+        self.lookup.save(update_fields=["kind", "query"])
+        self.client.force_login(self.user)
+        german = self.client.get(self.url).json()["fragments"]["report"]["html"]
+        self.assertNotIn("DNS-Zielbindung", german)
+        self.client.cookies["django_language"] = "en"
+        english = self.client.get(self.url).json()["fragments"]["report"]["html"]
+        self.assertNotIn("DNS target binding", english)
+
+    def test_ip_has_no_dynamic_address_report_box(self):
+        self.client.force_login(self.user)
+        german = self.client.get(self.url).json()["fragments"]["report"]["html"]
+        self.assertNotIn("Dynamische IP-Adresse", german)
+        self.client.cookies["django_language"] = "en"
+        english = self.client.get(self.url).json()["fragments"]["report"]["html"]
+        self.assertNotIn("Dynamic IP address", english)
+
+    def test_negative_fritz_fingerprint_remains_raw_data_only(self):
+        data = {
+            "target": {"resolvedAddress": "8.8.8.8", "addressFamily": "IPv4"},
+            "authorization": {"activeChecksConfirmed": False, "activeChecksPerformed": False},
+            "classification": {"likelyFritzBox": False, "confidence": "low", "reasons": ["AVM-Merkmal aus DNS"]},
+            "summary": "Ein einzelnes Indiz.",
+            "device": {"model": None, "hardwareId": None, "fritzOsVersion": None,
+                       "rawFirmwareVersion": None, "revision": None},
+            "warnings": [],
+        }
+        self.lookup.sources.append({"source": "FRITZ!Box Fingerprint", "ok": True, "data": data})
+        self.lookup.save(update_fields=["sources"])
+        self.client.force_login(self.user)
+        response = self.client.get(self.url).json()
+        self.assertNotIn("fritz", response["fragments"])
+        source = next(item for item in response["sources"] if item["key"] == "FRITZ!Box Fingerprint")
+        self.assertIn('id="source-fritzbox-fingerprint"', source["html"])
+
+    def test_global_language_switch_is_visible_on_every_page(self):
+        self.client.force_login(self.user)
+        german = self.client.get(reverse("lookups:index"))
+        self.assertContains(german, 'name="language" value="en"')
+        self.client.post(reverse("set_language"), {"language": "en", "next": reverse("lookups:index")})
+        english = self.client.get(reverse("lookups:index"))
+        self.assertContains(english, "Analyze")
+        self.assertContains(english, "History")
 
     def test_other_user_and_anonymous_are_refused(self):
         self.assertEqual(self.client.get(self.url).status_code, 302)
@@ -642,24 +932,26 @@ class ToolsClientTests(SimpleTestCase):
         self.assertTrue(all(job[4] == "example.com" for job in active))  # SNI wird durchgereicht
 
     def test_collectors_add_active_jobs_only_on_request(self):
-        names = {}
+        names = []
 
         async def fake_run_source(name, fn, *args):
-            names.setdefault("all", []).append(name)
+            names.append(name)
             return {"source": name, "ok": True, "data": {}}
 
         for active in (False, True):
             names.clear()
-            with mock.patch.object(ip, "run_source", fake_run_source):
+            with mock.patch.object(ip, "run_source", fake_run_source), \
+                    mock.patch.object(fritzbox.tools, "fritzbox", mock.AsyncMock(return_value={})) as direct:
                 asyncio.run(ip.collect(None, "8.8.8.8", active=active))
-            self.assertEqual(any("TLS-Zertifikat" in n for n in names["all"]), active, active)
-            self.assertTrue(any(n.startswith("WHOIS") for n in names["all"]))
+            self.assertEqual(direct.await_count, int(active))
+            self.assertTrue(any(n.startswith("WHOIS") for n in names))
 
 
 class ActiveProbeTests(TestCase):
     def setUp(self):
         self.staff = get_user_model().objects.create_user("chef", password="x", is_staff=True)
         self.normal = get_user_model().objects.create_user("anna", password="x")
+        OwnedTarget.objects.create(value="8.8.8.8")
 
     def _submit(self, user, **extra):
         self.client.force_login(user)
@@ -670,6 +962,35 @@ class ActiveProbeTests(TestCase):
     def test_staff_can_enable_active_probe(self):
         self.assertTrue(self._submit(self.staff, active="on").active_probe)
         self.assertFalse(self._submit(self.staff).active_probe)
+
+    def test_ports_and_timeout_are_validated_and_stored(self):
+        lookup = self._submit(self.staff, active="on", active_ports="9443, 443, 9443", active_timeout="12")
+        self.assertEqual(lookup.active_ports, [9443, 443])
+        self.assertEqual(lookup.active_timeout, 12)
+
+    def test_invalid_active_options_do_not_create_lookup(self):
+        self.client.force_login(self.staff)
+        with mock.patch("lookups.views.run_lookup.delay"), self.captureOnCommitCallbacks(execute=True):
+            response = self.client.post(reverse("lookups:index"), {
+                "q": "8.8.8.8", "active": "on", "active_ports": "1,2,3,4,5", "active_timeout": "8",
+            })
+        self.assertEqual(response.status_code, 400)
+        self.assertContains(response, "1 bis 4", status_code=400)
+        self.assertFalse(Lookup.objects.exists())
+
+    def test_private_active_target_is_rejected(self):
+        self.client.force_login(self.staff)
+        with mock.patch("lookups.views.run_lookup.delay"), self.captureOnCommitCallbacks(execute=True):
+            response = self.client.post(reverse("lookups:index"), {"q": "192.168.1.1", "active": "on"})
+        self.assertContains(response, "eigene Systeme", status_code=400)
+        self.assertFalse(Lookup.objects.exists())
+
+    def test_active_probe_requires_an_owned_target(self):
+        self.client.force_login(self.staff)
+        with mock.patch("lookups.views.run_lookup.delay"), self.captureOnCommitCallbacks(execute=True):
+            response = self.client.post(reverse("lookups:index"), {"q": "1.1.1.1", "active": "on"})
+        self.assertContains(response, "eigene Systeme", status_code=400)
+        self.assertFalse(Lookup.objects.exists())
 
     def test_normal_users_cannot_enable_it(self):
         self.assertFalse(self._submit(self.normal, active="on").active_probe)
@@ -688,7 +1009,7 @@ class ActiveProbeTests(TestCase):
         again = Lookup.objects.latest("pk")
         self.assertNotEqual(again.pk, first.pk)
         self.assertTrue(again.active_probe)
-        self.assertContains(self.client.get(reverse("lookups:detail", args=[again.pk])), "leise aktiv")
+        self.assertContains(self.client.get(reverse("lookups:detail", args=[again.pk])), "leicht aktiv")
 
     def test_task_passes_level_to_collectors(self):
         from .tasks import run_lookup
@@ -704,6 +1025,246 @@ class ActiveProbeTests(TestCase):
             run_lookup(lookup.pk)
         self.assertTrue(seen["active"])
         self.assertFalse(seen["scan"])
+        self.assertEqual(seen["active_ports"], [443, 8443])
+        self.assertEqual(seen["active_timeout"], 8)
+
+    def test_enrichment_requires_confirmation_and_creates_a_separate_generic_run(self):
+        parent = Lookup.objects.create(kind="ip", query="8.8.8.8", created_by=self.staff, status=Lookup.Status.DONE)
+        self.client.force_login(self.staff)
+        response = self.client.post(reverse("lookups:enrich", args=[parent.pk]), {"profile": "generic-router"})
+        self.assertRedirects(response, reverse("lookups:detail", args=[parent.pk]))
+        self.assertEqual(Lookup.objects.count(), 1)
+        with mock.patch("lookups.views.run_lookup.delay") as delay, self.captureOnCommitCallbacks(execute=True):
+            response = self.client.post(reverse("lookups:enrich", args=[parent.pk]), {
+                "profile": "generic-router", "authorization": "confirmed", "active_ports": "443", "active_timeout": "9",
+            })
+        enriched = Lookup.objects.latest("pk")
+        self.assertRedirects(response, reverse("lookups:detail", args=[enriched.pk]))
+        self.assertEqual((enriched.enrichment_of, enriched.active_profile, enriched.active_ports, enriched.active_timeout),
+                         (parent, Lookup.ActiveProfile.GENERIC_ROUTER, [443], 9))
+        delay.assert_called_once_with(enriched.pk)
+
+    def test_fritz_enrichment_default_ports_and_detail_control(self):
+        parent = Lookup.objects.create(kind="ip", query="8.8.8.8", created_by=self.staff, status=Lookup.Status.DONE)
+        self.client.force_login(self.staff)
+        self.assertContains(self.client.get(reverse("lookups:detail", args=[parent.pk])), "enrich-pop")
+        with mock.patch("lookups.views.run_lookup.delay"), self.captureOnCommitCallbacks(execute=True):
+            self.client.post(reverse("lookups:enrich", args=[parent.pk]), {
+                "profile": "fritzbox", "authorization": "confirmed",
+            })
+        enriched = Lookup.objects.latest("pk")
+        self.assertEqual((enriched.active_profile, enriched.active_ports), (Lookup.ActiveProfile.FRITZBOX, [443, 8443]))
+
+    def test_unregistered_target_shows_enrichment_setup_action(self):
+        parent = Lookup.objects.create(kind="ip", query="1.1.1.1", created_by=self.staff, status=Lookup.Status.DONE)
+        self.client.force_login(self.staff)
+        page = self.client.get(reverse("lookups:detail", args=[parent.pk]))
+        self.assertContains(page, "Dieses System einrichten")
+        self.assertContains(page, 'id="owned-pop"')
+        self.assertNotContains(page, 'id="enrich-pop"')
+
+    def test_detail_can_save_its_own_system_with_prefilled_provider_and_asn(self):
+        parent = Lookup.objects.create(
+            kind="host", query="router.example.org", created_by=self.staff, status=Lookup.Status.DONE,
+            sources=[
+                {"source": "DNS-Auflösung", "ok": True, "data": {"adressen": ["8.8.4.4"]}},
+                {"source": "ASN und Netzbetreiber (dig, Team Cymru)", "ok": True,
+                 "data": {"asn": ["AS3320"]}},
+                {"source": "ip-api.com (Geo/ASN)", "ok": True,
+                 "data": {"isp": "Deutsche Telekom", "org": "Telekom", "as": "AS3320 Deutsche Telekom"}},
+            ],
+        )
+        self.client.force_login(self.staff)
+        page = self.client.get(reverse("lookups:detail", args=[parent.pk]))
+        self.assertContains(page, 'value="AS3320"')
+        self.assertContains(page, "Deutsche Telekom")
+        response = self.client.post(reverse("lookups:own_target", args=[parent.pk]), {
+            "ownership_confirmation": "confirmed", "asn": "AS3320", "provider": "Deutsche Telekom",
+        })
+        self.assertRedirects(response, reverse("lookups:detail", args=[parent.pk]))
+        target = OwnedTarget.objects.get(value="router.example.org")
+        self.assertEqual((target.asn, target.provider), ("AS3320", "Deutsche Telekom"))
+
+    def test_ip_detail_prefills_and_saves_reverse_dns_name(self):
+        parent = Lookup.objects.create(
+            kind="ip", query="1.1.1.1", created_by=self.staff, status=Lookup.Status.DONE,
+            sources=[{"source": "Reverse DNS", "ok": True, "data": {"ptr": "router.example.org"}}],
+        )
+        self.client.force_login(self.staff)
+        page = self.client.get(reverse("lookups:detail", args=[parent.pk]))
+        self.assertContains(page, 'name="dns_name" value="router.example.org"')
+        self.client.post(reverse("lookups:own_target", args=[parent.pk]), {
+            "ownership_confirmation": "confirmed", "asn": "AS13335", "provider": "Example",
+            "dns_name": "router.example.org",
+        })
+        self.assertEqual(OwnedTarget.objects.get(value="1.1.1.1/32").dns_name, "router.example.org")
+
+    def test_own_target_uses_detail_target_not_a_client_supplied_address(self):
+        parent = Lookup.objects.create(kind="ip", query="1.1.1.1", created_by=self.staff, status=Lookup.Status.DONE)
+        self.client.force_login(self.staff)
+        self.client.post(reverse("lookups:own_target", args=[parent.pk]), {
+            "ownership_confirmation": "confirmed", "asn": "AS13335", "provider": "Example",
+            "value": "8.8.8.8",
+        })
+        self.assertTrue(OwnedTarget.objects.filter(value="1.1.1.1/32").exists())
+        self.assertEqual(OwnedTarget.objects.filter(value="8.8.8.8/32").count(), 1)  # nur der Setup-Eintrag
+
+    def test_speedport_enrichment_has_explicit_profile_and_defaults(self):
+        parent = Lookup.objects.create(kind="ip", query="8.8.8.8", created_by=self.staff, status=Lookup.Status.DONE)
+        self.client.force_login(self.staff)
+        with mock.patch("lookups.views.run_lookup.delay"), self.captureOnCommitCallbacks(execute=True):
+            self.client.post(reverse("lookups:enrich", args=[parent.pk]), {
+                "profile": "speedport", "authorization": "confirmed",
+            })
+        enriched = Lookup.objects.latest("pk")
+        self.assertEqual((enriched.active_profile, enriched.active_ports), (Lookup.ActiveProfile.SPEEDPORT, [80, 443]))
+
+    def test_worker_rechecks_ownership_before_active_contact(self):
+        from .tasks import run_lookup
+        lookup = Lookup.objects.create(kind="ip", query="1.1.1.1", active_probe=True)
+        seen = {}
+
+        async def fake_collect(kind, query, on_result=None, **kwargs):
+            seen.update(kwargs)
+            return []
+
+        with mock.patch("lookups.tasks.collect", fake_collect), \
+                mock.patch("lookups.tasks.llm.write_report", return_value="Risiko: niedrig"):
+            run_lookup(lookup.pk)
+        self.assertFalse(seen["active"])
+        lookup.refresh_from_db()
+        self.assertTrue(any(item["source"] == "Aktive Anreicherung" for item in lookup.sources))
+
+
+class FritzBoxFingerprintTests(SimpleTestCase):
+    def test_port_timeout_and_address_validation(self):
+        self.assertEqual(fritzbox.parse_ports("443, 8443 443"), [443, 8443])
+        self.assertEqual(fritzbox.parse_ports(""), [443, 8443])
+        self.assertEqual(fritzbox.parse_timeout(""), 8)
+        for bad in ("", "localhost", "192.168.1.1", "127.0.0.1", "169.254.169.254", "100.64.0.1",
+                    "192.0.2.1", "224.0.0.1", "::1", "fe80::1", "fd00::1", "2001:db8::1"):
+            self.assertFalse(fritzbox.public_address(bad), bad)
+        self.assertTrue(fritzbox.public_address("8.8.8.8"))
+        self.assertTrue(fritzbox.public_address("2001:4860:4860::8888"))
+
+    def test_all_dns_answers_must_be_public(self):
+        self.assertIsNone(fritzbox.validate_resolved_addresses(["8.8.8.8", "2001:4860:4860::8888"]))
+        self.assertIn("nicht öffentlich", fritzbox.validate_resolved_addresses(["8.8.8.8", "127.0.0.1"]))
+        self.assertIn("keine", fritzbox.validate_resolved_addresses([]))
+
+
+class RouterFingerprintTests(SimpleTestCase):
+    @override_settings(OSINT_TOOLS_TOKEN="test-token", OSINT_TOOLS_URL="http://tools.test")
+    def test_speedport_keeps_service_and_transport_timeouts_separate(self):
+        captured = {}
+
+        class Response:
+            status_code = 200
+
+            @staticmethod
+            def json():
+                return {"ok": True, "data": {"services": []}}
+
+        class Client:
+            async def post(self, url, **kwargs):
+                captured["url"] = url
+                captured.update(kwargs)
+                return Response()
+
+        asyncio.run(tools_client.speedport(Client(), "8.8.8.8", ports=[80, 443], timeout=8))
+        self.assertEqual(captured["json"]["timeout"], 8)
+        self.assertEqual(captured["timeout"], 100)
+
+    def test_generic_router_marker_is_a_direct_but_vendor_neutral_result(self):
+        direct = {
+            "services": [{"port": 443, "reachable": True}],
+            "observations": [{"evidence": "Router-/Gateway-Merkmal in HTTP-Metadaten auf Port 443"}],
+            "requestPolicy": "sequenziell",
+        }
+        result = router.build("router.example", "8.8.8.8", direct=direct)
+        self.assertEqual((result["classification"]["likelyRouter"], result["classification"]["confidence"]),
+                         (True, "low"))
+        self.assertEqual(result["device"], {"vendor": None, "model": None, "firmwareVersion": None})
+
+    def test_generic_profile_does_not_call_the_fritz_adapter(self):
+        async def fake_run_source(name, fn, *args):
+            if name != router.SOURCE:
+                return {"source": name, "ok": True, "data": {}}
+            data = fn(*args)
+            if hasattr(data, "__await__"):
+                data = await data
+            return {"source": name, "ok": True, "data": data}
+
+        with mock.patch.object(ip, "run_source", fake_run_source), \
+                mock.patch.object(fritzbox.tools, "fritzbox", mock.AsyncMock()) as fritz_direct, \
+                mock.patch.object(router.tools, "router", mock.AsyncMock(return_value={"services": []})) as generic_direct:
+            results = asyncio.run(ip.collect(None, "8.8.8.8", active=True, active_profile="generic-router", active_ports=[443]))
+        fritz_direct.assert_not_awaited()
+        generic_direct.assert_awaited_once()
+        self.assertIn(router.SOURCE, [item["source"] for item in results])
+
+    def test_speedport_status_directly_backs_model_and_firmware(self):
+        direct = {"speedport": {"plausible": True, "device": {
+            "vendor": "Telekom", "model": "Speedport Smart 4", "rawFirmwareVersion": "010139.5.0.001.0",
+        }}}
+        result = speedport.build("router.example", "8.8.8.8", direct=direct)
+        self.assertEqual((result["classification"]["likelySpeedport"], result["classification"]["confidence"]),
+                         (True, "high"))
+        self.assertEqual(result["device"]["rawFirmwareVersion"], "010139.5.0.001.0")
+
+    def test_speedport_profile_does_not_call_other_router_adapters(self):
+        async def fake_run_source(name, fn, *args):
+            if name != speedport.SOURCE:
+                return {"source": name, "ok": True, "data": {}}
+            data = fn(*args)
+            if hasattr(data, "__await__"):
+                data = await data
+            return {"source": name, "ok": True, "data": data}
+
+        with mock.patch.object(ip, "run_source", fake_run_source), \
+                mock.patch.object(fritzbox.tools, "fritzbox", mock.AsyncMock()) as fritz_direct, \
+                mock.patch.object(router.tools, "router", mock.AsyncMock()) as generic_direct, \
+                mock.patch.object(speedport.tools, "speedport", mock.AsyncMock(return_value={"services": []})) as speedport_direct:
+            results = asyncio.run(ip.collect(None, "8.8.8.8", active=True, active_profile="speedport", active_ports=[443]))
+        fritz_direct.assert_not_awaited()
+        generic_direct.assert_not_awaited()
+        speedport_direct.assert_awaited_once()
+        self.assertIn(speedport.SOURCE, [item["source"] for item in results])
+
+    def test_confidence_rules(self):
+        none = fritzbox.build("example.com", "8.8.8.8", [])
+        self.assertEqual((none["classification"]["likelyFritzBox"], none["classification"]["confidence"]),
+                         (False, "none"))
+        low = fritzbox.build("router.myfritz.net", "8.8.8.8", [])
+        self.assertEqual((low["classification"]["likelyFritzBox"], low["classification"]["confidence"]),
+                         (False, "low"))
+        sources = [
+            {"source": "Reverse DNS", "ok": True, "data": {"ptr": "x.myfritz.net"}},
+            {"source": "Shodan InternetDB", "ok": True, "data": {"hostnames": ["FRITZ!Box"]}},
+        ]
+        medium = fritzbox.build("example.com", "8.8.8.8", sources)
+        self.assertEqual((medium["classification"]["likelyFritzBox"], medium["classification"]["confidence"]),
+                         (True, "medium"))
+        direct = {"boxinfo": {"plausible": True, "serialRedacted": True, "device": {
+            "model": "FRITZ!Box 7590", "hardwareId": "226", "fritzOsVersion": "7.59",
+            "rawFirmwareVersion": "226.07.59", "revision": "1", "oem": "avm", "language": "de",
+            "labBuild": None,
+        }}}
+        high = fritzbox.build("example.com", "8.8.8.8", [], active_confirmed=True, direct=direct)
+        self.assertEqual(high["classification"]["confidence"], "high")
+        self.assertEqual(high["device"]["rawFirmwareVersion"], "226.07.59")
+
+    def test_serial_is_absent_from_structured_and_summary_output(self):
+        direct = {"boxinfo": {"plausible": True, "serialRedacted": True, "device": {
+            "model": "FRITZ!Box 7590", "hardwareId": "226", "fritzOsVersion": None,
+            "rawFirmwareVersion": None, "revision": None, "oem": "avm", "language": None,
+            "labBuild": None,
+        }}}
+        result = fritzbox.build("example.com", "8.8.8.8", [], direct=direct)
+        import json
+        serialized = json.dumps(result)
+        self.assertNotIn("serial", serialized.lower())
+        self.assertNotIn("SERIAL-MUST-NEVER-LEAK", serialized)
 
 
 class PromptBudgetTests(SimpleTestCase):
@@ -846,6 +1407,15 @@ class RiskFloorTests(SimpleTestCase):
         self.assertIn("Risiko: hoch (angehoben wegen offener Ports", report)
         self.assertNotIn("Risiko: niedrig", report)
 
+    def test_risk_floor_updates_both_languages(self):
+        bilingual = ("# Deutsch\n## Risikoeinschätzung\nRisiko: niedrig\nDeutsch.\n\n"
+                     "# English\n## Risk assessment\nRisk: low\nEnglish.")
+        report, risk = llm.apply_risk_floor(bilingual, "niedrig", self.SCAN_HOCH)
+        self.assertEqual(risk, "hoch")
+        self.assertIn("Risiko: hoch", report)
+        self.assertIn("Risk: high", report)
+        self.assertNotIn("Risk: low", report)
+
     def test_higher_model_risk_is_kept(self):
         report, risk = llm.apply_risk_floor("Risiko: hoch\nx", "hoch", self.SCAN_MITTEL)
         self.assertEqual((report, risk), ("Risiko: hoch\nx", "hoch"))
@@ -893,7 +1463,7 @@ class HostScanScopeTests(SimpleTestCase):
         async def fake_resolve(h):
             return {"hostname": h, "adressen": addresses}
 
-        async def fake_ip_collect(client, address, active=False, sni=None, scan=False):
+        async def fake_ip_collect(client, address, active=False, sni=None, scan=False, **kwargs):
             if scan:
                 scanned.append(address)
             return []
@@ -951,6 +1521,57 @@ class HostScanScopeTests(SimpleTestCase):
         self.assertEqual((scanned, refusals, calls), ([], [], []))
 
 
+class HostActiveBindingTests(SimpleTestCase):
+    def _run(self, addresses, asn_by_address, allowed):
+        calls = []
+
+        async def fake_resolve(hostname):
+            return {"hostname": hostname, "adressen": addresses}
+
+        async def fake_ip_collect(client, address, **kwargs):
+            calls.append((address, kwargs))
+            return []
+
+        async def fake_asn(client, address):
+            return {"asn": asn_by_address[address]}
+
+        async def go():
+            with mock.patch.object(host, "resolve", fake_resolve), mock.patch.object(ip, "collect", fake_ip_collect), \
+                    mock.patch.object(host.tools, "asn", fake_asn), \
+                    mock.patch.object(host.tools, "dns", mock.AsyncMock(return_value={})), \
+                    mock.patch.object(host.tools, "whois", mock.AsyncMock(return_value={})), \
+                    mock.patch.object(host.threatintel, "jobs", return_value=[]):
+                return await host.collect(
+                    None, "router.example.org", active=True, active_asns=allowed, active_ports=[443],
+                )
+
+        return asyncio.run(go()), calls
+
+    def test_active_hostname_requires_every_address_to_match_allowed_origin_asn(self):
+        results, calls = self._run(
+            ["91.1.2.3", "2001:4860:4860::8888"],
+            {"91.1.2.3": ["AS3320"], "2001:4860:4860::8888": ["AS3320"]}, {"AS3320"},
+        )
+        binding = next(item for item in results if item["source"] == host.BINDING_SOURCE)
+        self.assertTrue(binding["ok"])
+        self.assertEqual(binding["data"]["allowedOriginAsns"], ["AS3320"])
+        self.assertEqual(calls[0][1]["active_blocked"], None)
+
+    def test_active_hostname_is_passing_but_blocked_on_foreign_asn(self):
+        results, calls = self._run(["104.20.23.154"], {"104.20.23.154": ["AS13335"]}, {"AS3320"})
+        binding = next(item for item in results if item["source"] == host.BINDING_SOURCE)
+        self.assertFalse(binding["ok"])
+        self.assertIn("AS13335", binding["error"])
+        self.assertIn("aktive Prüfung wurde gesperrt", calls[0][1]["active_blocked"])
+
+    def test_active_hostname_without_asn_is_blocked(self):
+        results, calls = self._run(["91.1.2.3"], {"91.1.2.3": ["AS3320"]}, set())
+        binding = next(item for item in results if item["source"] == host.BINDING_SOURCE)
+        self.assertFalse(binding["ok"])
+        self.assertIn("kein Netz", binding["error"])
+        self.assertTrue(calls[0][1]["active_blocked"])
+
+
 class OwnedAsnTests(TestCase):
     def test_parse_asns(self):
         self.assertEqual(ownership.parse_asns("AS3320, 3209;as3320"), {"AS3320", "AS3209"})
@@ -974,6 +1595,16 @@ class OwnedAsnTests(TestCase):
         self.assertEqual(ownership.allowed_asns("host", "anderer.example.org"), set())
         self.assertIsNone(ownership.allowed_asns("ip", "8.8.8.8"))
 
+    def test_allowed_asns_for_ip_prefers_the_most_specific_owned_network(self):
+        OwnedTarget.objects.create(value="8.8.8.0/24", asn="AS15169")
+        OwnedTarget.objects.create(value="8.8.8.8", asn="AS3356")
+        self.assertEqual(ownership.allowed_asns("ip", "8.8.8.8"), {"AS3356"})
+
+    def test_expected_dns_name_for_ip_prefers_the_most_specific_owned_network(self):
+        OwnedTarget.objects.create(value="8.8.8.0/24", dns_name="network.example.org")
+        OwnedTarget.objects.create(value="8.8.8.8", dns_name="host.example.org")
+        self.assertEqual(ownership.expected_dns_name("ip", "8.8.8.8"), "host.example.org")
+
     def test_task_passes_allowed_networks_for_hosts(self):
         from .tasks import run_lookup
         OwnedTarget.objects.create(value="mein.example.org", asn="AS3320")
@@ -988,6 +1619,21 @@ class OwnedAsnTests(TestCase):
                 mock.patch("lookups.tasks.llm.write_report", return_value="Risiko: niedrig"):
             run_lookup(lookup.pk)
         self.assertEqual((seen["scan"], seen["scan_asns"]), (True, {"AS3320"}))
+
+    def test_task_passes_allowed_networks_for_active_hosts(self):
+        from .tasks import run_lookup
+        OwnedTarget.objects.create(value="mein.example.org", asn="AS3320")
+        lookup = Lookup.objects.create(kind="host", query="mein.example.org", active_probe=True)
+        seen = {}
+
+        async def fake_collect(kind, query, on_result=None, **kwargs):
+            seen.update(kwargs)
+            return []
+
+        with mock.patch("lookups.tasks.collect", fake_collect), \
+                mock.patch("lookups.tasks.llm.write_report", return_value="Risiko: niedrig"):
+            run_lookup(lookup.pk)
+        self.assertEqual((seen["active"], seen["active_asns"]), (True, {"AS3320"}))
 
 
 
@@ -1330,6 +1976,14 @@ class AsOfFormTests(TestCase):
         with mock.patch("lookups.views.run_lookup.delay"), self.captureOnCommitCallbacks(execute=True):
             self.client.post(reverse("lookups:rerun", args=[lookup.pk]))
         self.assertEqual(str(Lookup.objects.latest("pk").as_of), "2026-06-15")
+
+    def test_note_is_kept_on_rerun_and_a_new_analysis_of_the_same_target(self):
+        prior = Lookup.objects.create(kind="ip", query="8.8.8.8", created_by=self.user, note="Eigener Anschluss")
+        with mock.patch("lookups.views.run_lookup.delay"), self.captureOnCommitCallbacks(execute=True):
+            self.client.post(reverse("lookups:rerun", args=[prior.pk]))
+        self.assertEqual(Lookup.objects.latest("pk").note, "Eigener Anschluss")
+        self._post("")
+        self.assertEqual(Lookup.objects.latest("pk").note, "Eigener Anschluss")
 
     def test_empty_date_means_no_lookback(self):
         self._post("")

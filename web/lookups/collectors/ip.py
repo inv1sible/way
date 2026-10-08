@@ -7,9 +7,11 @@ import time
 
 from django.conf import settings
 
-from . import censys, history, run_source, threatintel, tools
+from . import censys, fritzbox, history, router, run_source, speedport, threatintel, tools
 
 CGNAT = ipaddress.ip_network("100.64.0.0/10")
+IP_BINDING_SOURCE = "IP-Zielbindung (ASN)"
+IP_DNS_BINDING_SOURCE = "IP-Zielbindung (DNS)"
 
 ZEN_CODES = {
     "127.0.0.2": "SBL: bekannte Spam-Quelle",
@@ -50,6 +52,49 @@ async def reverse_dns(ip):
     except (socket.herror, socket.gaierror):
         return {"ptr": None}
     return {"ptr": name, "aliase": aliases}
+
+
+def verify_ip_binding(ip, expected_asns, sources):
+    """Fail-closed-Schranke für IP-Assets mit explizit gespeichertem ASN.
+
+    Das ist kein Besitzbeweis (ein ASN enthält viele Kunden), verhindert aber aktive Anfragen,
+    wenn eine vormals eigene dynamische IP inzwischen in ein unerwartetes Netz umgezogen ist.
+    Die ASN-Quelle wurde in demselben Lauf passiv abgefragt, bevor ein Direktzugriff startet.
+    """
+    if not expected_asns:
+        return None
+    asn_source = next((item for item in sources if item.get("source", "").startswith("ASN und Netzbetreiber")), None)
+    if not asn_source or not asn_source.get("ok"):
+        raise RuntimeError("Aktuelles ASN konnte nicht ermittelt werden.")
+    found = {str(value) for value in (asn_source.get("data") or {}).get("asn", []) if value}
+    if not found & set(expected_asns):
+        raise RuntimeError(
+            f"{ip} liegt in {', '.join(sorted(found)) or 'einem unbekannten Netz'}, erwartet sind "
+            f"{', '.join(sorted(expected_asns))}."
+        )
+    return {
+        "address": ip,
+        "originAsns": sorted(found),
+        "expectedOriginAsns": sorted(expected_asns),
+        "warning": "Die ASN-Prüfung ist eine Sicherheitsgrenze, kein Eigentumsnachweis.",
+    }
+
+
+async def verify_ip_dns_binding(ip, dns_name):
+    """Prüft eine vom Admin bestätigte IP↔DNS-Beziehung vor aktivem Kontakt."""
+    infos = await asyncio.to_thread(socket.getaddrinfo, dns_name, None, proto=socket.IPPROTO_TCP)
+    addresses = sorted({item[4][0] for item in infos})
+    invalid = fritzbox.validate_resolved_addresses(addresses)
+    if invalid:
+        raise RuntimeError(invalid)
+    if ip not in addresses:
+        raise RuntimeError(f"{dns_name} löst aktuell nicht auf {ip} auf.")
+    return {
+        "address": ip,
+        "hostname": dns_name,
+        "resolvedAddresses": addresses,
+        "warning": "Die DNS-Bindung ist zeitgebunden und kein Eigentumsnachweis.",
+    }
 
 
 def _contacts(entities):
@@ -149,10 +194,26 @@ async def spamhaus(ip):
     return {"gelistet": True, "listen": [ZEN_CODES.get(a, a) for a in addrs]}
 
 
-async def collect(client, ip, active=False, sni=None, scan=False, as_of=None):
+async def collect(client, ip, active=False, sni=None, active_ports=None, active_timeout=8, active_profile="fritzbox",
+                  active_blocked=None, scan=False, active_asns=None, active_dns_name=None, as_of=None):
     info = classify(ip)
     results = [{"source": "Adressklassifizierung", "ok": True, "data": info}]
     if not info["oeffentlich"]:
+        fingerprint = await fritzbox.fingerprint(
+            client, sni or ip, ip, results, active=active and active_profile == "fritzbox", ports=active_ports, timeout=active_timeout,
+            active_blocked=active_blocked or "Das Ziel ist nicht öffentlich routbar; aktive Prüfung wurde gesperrt.",
+        )
+        results.append(await run_source(fritzbox.SOURCE, lambda: fingerprint))
+        if active and active_profile == "generic-router":
+            results.append(await run_source(router.SOURCE, lambda: router.fingerprint(
+                client, sni or ip, ip, ports=active_ports, timeout=active_timeout,
+                active_blocked=active_blocked or "Das Ziel ist nicht öffentlich routbar; aktive Prüfung wurde gesperrt.",
+            )))
+        if active and active_profile == "speedport":
+            results.append(await run_source(speedport.SOURCE, lambda: speedport.fingerprint(
+                client, sni or ip, ip, ports=active_ports, timeout=active_timeout,
+                active_blocked=active_blocked or "Das Ziel ist nicht öffentlich routbar; aktive Prüfung wurde gesperrt.",
+            )))
         return results
 
     jobs = [
@@ -171,12 +232,38 @@ async def collect(client, ip, active=False, sni=None, scan=False, as_of=None):
     if settings.OSINT_CENSYS_TOKEN:
         jobs.append(("Censys (Internet-Scan-Daten)", censys.host, client, ip))
     jobs += tools.passive_ip_jobs(client, ip)
-    if active:
-        jobs += tools.active_ip_jobs(client, ip, sni)
     if scan:
         jobs.append(tools.scan_job(client, ip))
     if as_of:
         jobs += history.ip_jobs(client, ip, as_of)
 
     results += await asyncio.gather(*(run_source(name, fn, *args) for name, fn, *args in jobs))
+    if active and active_asns:
+        binding = await run_source(IP_BINDING_SOURCE, verify_ip_binding, ip, active_asns, results)
+        results.append(binding)
+        if not binding["ok"]:
+            active_blocked = (
+                "Die aktuelle IP-/ASN-Bindung konnte nicht bestätigt werden; aktive Prüfung wurde gesperrt."
+            )
+    if active and active_dns_name:
+        binding = await run_source(IP_DNS_BINDING_SOURCE, verify_ip_dns_binding, ip, active_dns_name)
+        results.append(binding)
+        if not binding["ok"]:
+            active_blocked = (
+                "Die aktuelle IP-/DNS-Bindung konnte nicht bestätigt werden; aktive Prüfung wurde gesperrt."
+            )
+    fingerprint = await fritzbox.fingerprint(
+        client, sni or ip, ip, results, active=active and active_profile == "fritzbox", ports=active_ports, timeout=active_timeout,
+        active_blocked=active_blocked,
+    )
+    result = await run_source(fritzbox.SOURCE, lambda: fingerprint)
+    results.append(result)
+    if active and active_profile == "generic-router":
+        results.append(await run_source(router.SOURCE, lambda: router.fingerprint(
+            client, sni or ip, ip, ports=active_ports, timeout=active_timeout, active_blocked=active_blocked,
+        )))
+    if active and active_profile == "speedport":
+        results.append(await run_source(speedport.SOURCE, lambda: speedport.fingerprint(
+            client, sni or ip, ip, ports=active_ports, timeout=active_timeout, active_blocked=active_blocked,
+        )))
     return results

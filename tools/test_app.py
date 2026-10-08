@@ -7,12 +7,35 @@ import unittest
 import urllib.error
 import urllib.request
 from http.server import ThreadingHTTPServer
+from pathlib import Path
+from unittest import mock
 
 os.environ["TOOLS_TOKEN"] = "test-token"
 
 import app  # noqa: E402
 
 CERT_PEM = None
+VALID_BOXINFO = b"""<?xml version="1.0" encoding="utf-8"?>
+<j:BoxInfo xmlns:j="http://jason.avm.de/updatecheck/">
+  <j:Name>FRITZ!Box 7590 AX</j:Name>
+  <j:HW>259</j:HW>
+  <j:Version>259.08.02-123456</j:Version>
+  <j:Revision>123456</j:Revision>
+  <j:OEM>avm</j:OEM>
+  <j:Lang>de</j:Lang>
+  <j:Annex>B</j:Annex>
+  <j:Lab>Labor</j:Lab>
+  <j:Serial>SERIAL-MUST-NEVER-LEAK</j:Serial>
+</j:BoxInfo>"""
+MISSING_BOXINFO_FIELDS = b"""<?xml version="1.0"?>
+<BoxInfo><Name>Test Router</Name><HW>123</HW></BoxInfo>"""
+INVALID_BOXINFO_DOCUMENTS = (
+    b'<?xml version="1.0"?><BoxInfo><Name>FRITZ!Box 7590</BoxInfo>',
+    b"<!doctype html><html><head><title>Router login</title></head><body>Login</body></html>",
+    b'''<?xml version="1.0"?>
+<!DOCTYPE BoxInfo [<!ENTITY secret SYSTEM "file:///etc/passwd">]>
+<BoxInfo><Name>&secret;</Name><HW>259</HW></BoxInfo>''',
+)
 
 
 def make_cert():
@@ -25,7 +48,7 @@ def make_cert():
                  "-addext", "subjectAltName=DNS:test.example,DNS:www.test.example,IP:203.0.113.5"],
                 check=True, capture_output=True,
             )
-            CERT_PEM = open(f"{tmp}/c").read()
+            CERT_PEM = Path(f"{tmp}/c").read_text()
     return CERT_PEM
 
 
@@ -52,6 +75,17 @@ class TargetChecks(unittest.TestCase):
         for port in (22, 6379, "abc", None.__class__):
             with self.assertRaises(app.Refused):
                 app.port_of({"port": port}, app.TLS_PORTS, 443)
+
+    def test_fritz_ports_and_timeout_are_strictly_limited(self):
+        self.assertEqual(app.fritz_ports({}), [443, 8443])
+        self.assertEqual(app.fritz_ports({"ports": [443, "9443", 443]}), [443, 9443])
+        self.assertEqual(app.fritz_timeout({}), 8)
+        for ports in ([], [1, 2, 3, 4, 5], [0], [65536], [True], "443"):
+            with self.assertRaises(app.Refused, msg=ports):
+                app.fritz_ports({"ports": ports})
+        for timeout in (1, 21, "x", True):
+            with self.assertRaises(app.Refused, msg=timeout):
+                app.fritz_timeout({"timeout": timeout})
 
     def test_private_ip_is_refused_by_every_tool(self):
         for name, params in (("tls", {"ip": "192.168.1.1"}), ("web", {"ip": "127.0.0.1"}), ("asn", {"ip": "10.0.0.1"}),
@@ -118,6 +152,173 @@ mnt-by:         ignoriert
         self.assertEqual(cert["alternative_namen"], ["test.example", "www.test.example", "203.0.113.5"])
         self.assertFalse(cert["abgelaufen"])
         self.assertTrue(28 <= cert["tage_bis_ablauf"] <= 30)
+
+
+class FritzBoxParserTests(unittest.TestCase):
+    def test_valid_boxinfo_and_version_fields(self):
+        result = app.parse_boxinfo(VALID_BOXINFO)
+        self.assertTrue(result["plausible"])
+        self.assertEqual(result["device"], {
+            "model": "FRITZ!Box 7590 AX",
+            "hardwareId": "259",
+            "fritzOsVersion": "8.02",
+            "rawFirmwareVersion": "259.08.02-123456",
+            "revision": "123456",
+            "oem": "avm",
+            "language": "de",
+            "annex": "B",
+            "labBuild": "Labor",
+        })
+        self.assertTrue(result["serialRedacted"])
+        self.assertNotIn("SERIAL-MUST-NEVER-LEAK", json.dumps(result))
+
+    def test_missing_fields_are_null_and_model_is_not_invented(self):
+        result = app.parse_boxinfo(MISSING_BOXINFO_FIELDS)
+        self.assertIsNone(result["device"]["model"])
+        self.assertIsNone(result["device"]["fritzOsVersion"])
+        self.assertIsNone(result["device"]["revision"])
+
+    def test_malformed_login_and_xxe_are_rejected(self):
+        for document in INVALID_BOXINFO_DOCUMENTS:
+            with self.assertRaises(ValueError):
+                app.parse_boxinfo(document)
+
+    def test_oversized_response_is_rejected(self):
+        with self.assertRaisesRegex(ValueError, "zu groß"):
+            app.parse_boxinfo(b"<BoxInfo>" + b"x" * 65_537 + b"</BoxInfo>")
+
+    def test_version_is_only_derived_for_unambiguous_formats(self):
+        self.assertEqual(app.derive_fritz_os("154.07.57"), "7.57")
+        self.assertEqual(app.derive_fritz_os("259.08.02-123456"), "8.02")
+        self.assertEqual(app.derive_fritz_os("7.57"), "7.57")
+        for value in ("", "154.7", "Linux 5.15", "154.07.57 extra"):
+            self.assertIsNone(app.derive_fritz_os(value))
+
+    def test_speedport_status_is_allowlisted_and_does_not_leak_other_fields(self):
+        payload = json.dumps({
+            "device_name": "Speedport_Smart_4_Typ_A", "firmware_version": "010139.5.0.001.0",
+            "serial_number": "SERIAL-MUST-NEVER-LEAK", "connected_devices": ["private-device"],
+        }).encode()
+        result = app.parse_speedport_status(payload)
+        self.assertTrue(result["plausible"])
+        self.assertEqual(result["device"], {
+            "vendor": "Telekom", "model": "Speedport Smart 4 Typ A", "rawFirmwareVersion": "010139.5.0.001.0",
+        })
+        serialized = json.dumps(result)
+        self.assertNotIn("SERIAL-MUST-NEVER-LEAK", serialized)
+        self.assertNotIn("private-device", serialized)
+
+    def test_speedport_status_rejects_invalid_json_and_does_not_guess_model(self):
+        with self.assertRaises(ValueError):
+            app.parse_speedport_status(b"<html>login</html>")
+        result = app.parse_speedport_status(b'{"model_name":"Home Gateway","firmware_version":"1.2"}')
+        self.assertFalse(result["plausible"])
+        self.assertIsNone(result["device"]["model"])
+
+
+class FritzBoxToolTests(unittest.TestCase):
+    def _fetch(self, status=404, body=b"", content_type="text/plain", oversized=False):
+        return {
+            "url": "https://router.example:443/jason_boxinfo.xml",
+            "status": status,
+            "headers": {"content-type": content_type},
+            "cookieNames": [],
+            "body": body,
+            "oversized": oversized,
+        }
+
+    def test_401_403_404_are_normal_negative_results(self):
+        for status in (401, 403, 404):
+            with self.subTest(status=status), \
+                    mock.patch.object(app, "_curl_fetch", return_value=self._fetch(status=status)), \
+                    mock.patch.object(app, "probe_tls", side_effect=RuntimeError("kein TLS")):
+                result = app.tool_fritzbox({"ip": "8.8.8.8", "ports": [443]})
+                self.assertIsNone(result["boxinfo"])
+                endpoint = result["services"][0]["endpoints"][1]
+                self.assertEqual((endpoint["status"], endpoint["result"]), (status, "negative"))
+
+    def test_timeout_is_a_normal_negative_result(self):
+        with mock.patch.object(app, "_curl_fetch", side_effect=RuntimeError("Zeitüberschreitung nach 8 s")), \
+                mock.patch.object(app, "probe_tls", side_effect=RuntimeError("kein TLS")):
+            result = app.tool_fritzbox({"ip": "8.8.8.8", "ports": [443]})
+        self.assertIsNone(result["boxinfo"])
+        self.assertEqual(len(result["services"][0]["endpoints"]), 2)
+        self.assertTrue(all(e["result"] == "negative" for e in result["services"][0]["endpoints"]))
+
+    def test_valid_boxinfo_is_parsed_without_serial_in_output_or_logs(self):
+        calls = []
+
+        def fetch(addr, sni, port, scheme, path, timeout):
+            calls.append((str(addr), sni, port, scheme, path, timeout))
+            if path == "/":
+                return self._fetch(200, b"<html><title>FRITZ!Box</title></html>", "text/html")
+            return self._fetch(200, VALID_BOXINFO, "application/xml")
+
+        cert = {"inhaber": "CN=router.example", "aussteller": "CN=router.example", "alternative_namen": [],
+                "vertrauenswuerdig": False, "gueltig_ab": None, "gueltig_bis": None}
+        with mock.patch.object(app, "_curl_fetch", side_effect=fetch), mock.patch.object(app, "probe_tls", return_value=cert), \
+                mock.patch("builtins.print") as printed:
+            result = app.tool_fritzbox({"ip": "8.8.8.8", "sni": "router.example", "ports": [443], "timeout": 8})
+        serialized = json.dumps(result)
+        self.assertNotIn("SERIAL-MUST-NEVER-LEAK", serialized)
+        self.assertNotIn("SERIAL-MUST-NEVER-LEAK", repr(printed.call_args_list))
+        self.assertEqual(result["boxinfo"]["device"]["model"], "FRITZ!Box 7590 AX")
+        self.assertEqual([call[4] for call in calls], ["/", "/jason_boxinfo.xml"])
+        self.assertIn("nicht vertrauenswürdig", result["warnings"][0])
+
+    def test_oversized_xml_is_not_parsed(self):
+        responses = [self._fetch(200, b"<html></html>", "text/html"),
+                     self._fetch(200, b"<BoxInfo/>", "application/xml", oversized=True)]
+        with mock.patch.object(app, "_curl_fetch", side_effect=responses), \
+                mock.patch.object(app, "probe_tls", side_effect=RuntimeError("kein TLS")), \
+                mock.patch.object(app, "parse_boxinfo") as parser:
+            result = app.tool_fritzbox({"ip": "8.8.8.8", "ports": [443]})
+        parser.assert_not_called()
+        self.assertIsNone(result["boxinfo"])
+
+    def test_ipv6_url_is_bracketed_and_hostname_is_pinned(self):
+        seen = []
+
+        def fake_run(cmd, timeout, input_text=None):
+            seen.append(cmd)
+            header = Path(cmd[cmd.index("-D") + 1])
+            body = Path(cmd[cmd.index("-o") + 1])
+            header.write_text("HTTP/1.1 404 Not Found\r\nContent-Type: text/plain\r\n\r\n")
+            body.write_bytes(b"")
+            return "", "", 0
+
+        with mock.patch.object(app, "run", side_effect=fake_run):
+            fetched = app._curl_fetch(app.parse_ip("2001:4860:4860::8888"), "router.example", 9443,
+                                      "https", "/jason_boxinfo.xml", 8)
+        command = seen[0]
+        self.assertIn("router.example:9443:[2001:4860:4860::8888]", command)
+        self.assertEqual(command[command.index("--max-redirs") + 1], "0")
+        self.assertEqual(command[-1], "https://router.example:9443/jason_boxinfo.xml")
+        self.assertEqual(fetched["status"], 404)
+
+    def test_generic_router_profile_only_requests_the_root(self):
+        fetched = self._fetch(200, b"<html><title>Speedport Router</title></html>", "text/html")
+        with mock.patch.object(app, "_curl_fetch", return_value=fetched) as fetch, \
+                mock.patch.object(app, "probe_tls", side_effect=RuntimeError("kein TLS")):
+            result = app.tool_router({"ip": "8.8.8.8", "profile": "generic"})
+        self.assertEqual(result["ports"], [443])
+        self.assertEqual([call.args[4] for call in fetch.call_args_list], ["/"])
+        self.assertIn("Router-/Gateway", result["observations"][0]["evidence"])
+        self.assertIn("höchstens zwei HTTP-Anfragen", result["requestPolicy"])
+
+    def test_speedport_profile_only_requests_root_and_public_status(self):
+        def fetch(addr, sni, port, scheme, path, timeout):
+            body = b"<html><title>Speedport</title></html>" if path == "/" else (
+                b'{"device_name":"Speedport_Smart_4","firmware_version":"010139.5.0.001.0"}'
+            )
+            return self._fetch(200, body, "text/html" if path == "/" else "application/json")
+
+        with mock.patch.object(app, "_curl_fetch", side_effect=fetch) as mocked, \
+                mock.patch.object(app, "probe_tls", side_effect=RuntimeError("kein TLS")):
+            result = app.tool_router({"ip": "8.8.8.8", "profile": "speedport", "ports": [443]})
+        self.assertEqual([call.args[4] for call in mocked.call_args_list], ["/", "/data/Status.json"])
+        self.assertEqual(result["speedport"]["device"]["model"], "Speedport Smart 4")
+        self.assertIn("keine Redirects, Anmeldung", result["requestPolicy"])
 
 
 class Api(unittest.TestCase):

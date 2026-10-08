@@ -1,5 +1,5 @@
-{% if hits %}
-  <h2>Fundstellen im Web ({{ hits|length }})</h2>
+{% load ui_tags %}{% if hits %}
+  <h2>{% ui 'Fundstellen im Web' 'Web findings' %} ({{ hits|length }})</h2>
   <ul class="hits">
   {% for hit in hits %}
     <li>

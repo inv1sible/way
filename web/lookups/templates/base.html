@@ -1,5 +1,5 @@
-{% load static %}<!doctype html>
-<html lang="de">
+{% load static ui_tags i18n %}{% get_current_language as LANGUAGE_CODE %}<!doctype html>
+<html lang="{{ LANGUAGE_CODE }}">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -15,17 +15,32 @@
 <body>
   <header>
     <a href="{% url 'lookups:index' %}" class="brand">Who Are You</a>
-    {% if user.is_authenticated %}
-      <nav>
+    <nav>
+      <form method="post" action="{% url 'set_language' %}" class="language-switch global-language" aria-label="{% ui 'Sprache' 'Language' %}">{% csrf_token %}
+        <input type="hidden" name="next" value="{{ request.get_full_path }}">
+        <button type="submit" name="language" value="de"{% if LANGUAGE_CODE == "de" %} class="selected" aria-current="true"{% endif %}>DE</button>
+        <button type="submit" name="language" value="en"{% if LANGUAGE_CODE == "en" %} class="selected" aria-current="true"{% endif %}>EN</button>
+      </form>
+      {% if user.is_authenticated %}
         {% if user.is_staff %}
-          <a href="{% url 'accounts:invitations' %}">Einladungen</a>
-          <a href="{% url 'admin:index' %}">Admin</a>
+          <details class="admin-menu">
+            <summary class="icon" title="{% ui 'Verwaltungsmenü' 'Administration menu' %}" aria-label="{% ui 'Verwaltungsmenü' 'Administration menu' %}">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+            </summary>
+            <div class="admin-menu-pop">
+              <a href="{% url 'accounts:invitations' %}">{% ui 'Einladungen' 'Invitations' %}</a>
+              <a href="{% url 'admin:index' %}">Admin</a>
+            </div>
+          </details>
         {% endif %}
         <form method="post" action="{% url 'logout' %}">{% csrf_token %}
-          <span class="muted">{{ user.email|default:user.username }}</span> <button class="link">Abmelden</button>
+          <span class="muted">{{ user.email|default:user.username }}</span>
+          <button type="submit" class="icon" title="{% ui 'Abmelden' 'Sign out' %}" aria-label="{% ui 'Abmelden' 'Sign out' %}">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 4H5a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h5"/><path d="m15 8 4 4-4 4M19 12H9"/></svg>
+          </button>
         </form>
-      </nav>
-    {% endif %}
+      {% endif %}
+    </nav>
   </header>
   <main>
     {% for message in messages %}<p class="message">{{ message }}</p>{% endfor %}

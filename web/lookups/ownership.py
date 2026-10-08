@@ -43,16 +43,49 @@ def parse_asns(text):
 
 
 def allowed_asns(kind, query):
-    """Für Hostnamen die erlaubten Netze (AS-Nummern) des Eintrags; sonst None (keine Netzprüfung nötig)."""
+    """Hinterlegte erwartete ASNs; None bedeutet, dass für dieses Ziel keine ASN-Schranke gesetzt ist."""
     from .models import OwnedTarget
 
-    if kind != "host":
+    if kind == "host":
+        entry = OwnedTarget.objects.filter(value=query.strip().lower().rstrip(".")).first()
+    elif kind == "ip":
+        address = ipaddress.ip_address(query)
+        matches = []
+        for candidate in OwnedTarget.objects.all():
+            try:
+                network = ipaddress.ip_network(candidate.value)
+                if address in network:
+                    matches.append((network.prefixlen, candidate))
+            except ValueError:
+                continue
+        entry = max(matches, default=(None, None), key=lambda match: match[0])[1]
+    else:
         return None
-    entry = OwnedTarget.objects.filter(value=query.strip().lower().rstrip(".")).first()
     try:
-        return parse_asns(entry.asn) if entry else set()
+        allowed = parse_asns(entry.asn) if entry else set()
     except ValidationError:
-        return set()  # unlesbarer Eintrag: im Zweifel nicht scannen
+        allowed = set()  # unlesbarer Eintrag: im Zweifel nicht scannen
+    # Für Hostnamen ist ein ASN verpflichtend und ein fehlender Eintrag muss die Prüfung sperren.
+    # Bei älteren IP-Einträgen ohne ASN bleibt das bisherige Verhalten erhalten.
+    return allowed if kind == "host" or allowed else None
+
+
+def expected_dns_name(kind, query):
+    """Optionaler, explizit am IP-Asset gespeicherter DNS-Name für die aktive Bindungsprüfung."""
+    if kind != "ip":
+        return None
+    from .models import OwnedTarget
+
+    address = ipaddress.ip_address(query)
+    matches = []
+    for candidate in OwnedTarget.objects.exclude(dns_name=""):
+        try:
+            network = ipaddress.ip_network(candidate.value)
+            if address in network:
+                matches.append((network.prefixlen, candidate.dns_name))
+        except ValueError:
+            continue
+    return max(matches, default=(None, None), key=lambda match: match[0])[1]
 
 
 def is_owned(kind, query):

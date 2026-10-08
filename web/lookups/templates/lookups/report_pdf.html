@@ -1,16 +1,16 @@
-{% load report_tags %}<!doctype html>
-<html lang="de">
+{% load report_tags ui_tags i18n %}{% get_current_language as LANGUAGE_CODE %}<!doctype html>
+<html lang="{{ LANGUAGE_CODE }}">
 <head>
 <meta charset="utf-8">
-<title>Analysebericht {{ lookup.query }}</title>
+<title>{% ui 'Analysebericht' 'Analysis report' %} {{ lookup.query }}</title>
 <style>
   @page {
     size: A4;
     margin: 22mm 18mm 20mm;
-    @top-left { content: "Who Are You · Analysebericht"; font-family: "DejaVu Sans", sans-serif; font-size: 8pt; color: #5d6673; }
+    @top-left { content: "Who Are You · {% ui 'Analysebericht' 'Analysis report' %}"; font-family: "DejaVu Sans", sans-serif; font-size: 8pt; color: #5d6673; }
     @top-right { content: "{{ lookup.query }}"; font-family: "DejaVu Sans", sans-serif; font-size: 8pt; color: #5d6673; }
-    @bottom-left { content: "Erstellt {{ generated_at|date:'d.m.Y H:i' }} · vertraulich"; font-family: "DejaVu Sans", sans-serif; font-size: 8pt; color: #5d6673; }
-    @bottom-right { content: "Seite " counter(page) " von " counter(pages); font-family: "DejaVu Sans", sans-serif; font-size: 8pt; color: #5d6673; }
+    @bottom-left { content: "{% ui 'Erstellt' 'Created' %} {{ generated_at|ui_datetime }} · {% ui 'vertraulich' 'confidential' %}"; font-family: "DejaVu Sans", sans-serif; font-size: 8pt; color: #5d6673; }
+    @bottom-right { content: "{% ui 'Seite' 'Page' %} " counter(page) " {% ui 'von' 'of' %} " counter(pages); font-family: "DejaVu Sans", sans-serif; font-size: 8pt; color: #5d6673; }
   }
   body { font-family: "DejaVu Sans", sans-serif; font-size: 9.5pt; line-height: 1.45; color: #1b1f24; }
   h1 { font-size: 18pt; margin: 0 0 2mm; word-break: break-all; }
@@ -44,56 +44,57 @@
   <h1>{{ lookup.query }}</h1>
 
   <table>
-    <tr><th>Typ</th><td>{{ lookup.get_kind_display }}</td></tr>
-    <tr><th>Risikoeinschätzung</th><td>{% if lookup.risk %}<span class="risk risk-{{ lookup.risk }}">{{ lookup.risk }}</span>{% else %}–{% endif %}</td></tr>
-    {% if lookup.as_of %}<tr><th>Stand (Rückblick)</th><td>{{ lookup.as_of|date:"d.m.Y" }}</td></tr>{% endif %}
-    <tr><th>Abfragestufe</th><td>passiv{% if lookup.active_probe %}, leise aktiv (direkter Kontakt zum Ziel){% endif %}{% if lookup.port_scan %}, Portscan (eigenes System){% endif %}</td></tr>
-    <tr><th>Status</th><td>{{ lookup.get_status_display }}</td></tr>
-    <tr><th>Analyse gestartet</th><td>{{ lookup.created_at|date:"d.m.Y H:i:s" }}</td></tr>
-    <tr><th>Abgeschlossen</th><td>{{ lookup.finished_at|date:"d.m.Y H:i:s"|default:"–" }}</td></tr>
-    <tr><th>Angefordert von</th><td>{% if lookup.created_by %}{{ lookup.created_by.email|default:lookup.created_by.username }}{% else %}–{% endif %}</td></tr>
-    <tr><th>KI-Modell</th><td>{{ lookup.model|default:"–" }}</td></tr>
+    <tr><th>{% ui 'Typ' 'Type' %}</th><td>{{ lookup.kind|kind_label }}</td></tr>
+    <tr><th>{% ui 'Risikoeinschätzung' 'Risk assessment' %}</th><td>{% if lookup.risk %}<span class="risk risk-{{ lookup.risk }}">{{ lookup.risk|risk_label }}</span>{% else %}–{% endif %}</td></tr>
+    {% if lookup.as_of %}<tr><th>{% ui 'Stand (Rückblick)' 'Reference date' %}</th><td>{{ lookup.as_of|ui_date }}</td></tr>{% endif %}
+    <tr><th>{% ui 'Abfragestufe' 'Query mode' %}</th><td>{% ui 'passiv' 'passive' %}{% if lookup.active_probe %}, {% ui 'leicht aktiv (Berechtigung bestätigt; Ports' 'active-light (authorization confirmed; ports' %} {{ lookup.active_ports|join:", " }}){% endif %}{% if lookup.port_scan %}, {% ui 'Portscan (eigenes System)' 'port scan (owned system)' %}{% endif %}</td></tr>
+    <tr><th>Status</th><td>{{ lookup.status|status_label }}</td></tr>
+    <tr><th>{% ui 'Analyse gestartet' 'Analysis started' %}</th><td>{{ lookup.created_at|ui_datetime }}</td></tr>
+    <tr><th>{% ui 'Abgeschlossen' 'Completed' %}</th><td>{{ lookup.finished_at|ui_datetime }}</td></tr>
+    <tr><th>{% ui 'Angefordert von' 'Requested by' %}</th><td>{% if lookup.created_by %}{{ lookup.created_by.email|default:lookup.created_by.username }}{% else %}–{% endif %}</td></tr>
+    <tr><th>{% ui 'KI-Modell' 'AI model' %}</th><td>{{ lookup.model|default:"–" }}</td></tr>
   </table>
 
-  {% if lookup.error %}<p class="err">Fehler: {{ lookup.error }}</p>{% endif %}
+  {% if lookup.error %}<p class="err">{% ui 'Fehler' 'Error' %}: {{ lookup.error }}</p>{% endif %}
 
   {% if lookup.report_md %}
-    <h2>KI-Bericht</h2>
-    <div class="report">{{ lookup.report_md|markdown }}</div>
-    <p class="note">Der Bericht wurde automatisch von einem Sprachmodell aus den Rohdaten im Anhang erstellt
-      und kann Fehler enthalten. Maßgeblich sind die Rohdaten der jeweiligen Quellen.</p>
+    <h2>{% ui 'KI-Bericht' 'AI report' %}</h2>
+    <div class="report">{{ lookup.report_md|localized_report|markdown }}</div>
+    <p class="note">{% ui 'Der Bericht wurde automatisch von einem Sprachmodell aus den Rohdaten im Anhang erstellt und kann Fehler enthalten. Maßgeblich sind die Rohdaten der jeweiligen Quellen.' 'The report was generated automatically by a language model from the raw data in the appendix and may contain errors. The raw data from each source is authoritative.' %}</p>
   {% endif %}
 
   {% include "lookups/live/scan.html" %}
   {% include "lookups/live/history.html" %}
 
   {% with hits=lookup.sources|fundstellen %}{% if hits %}
-    <h2>Fundstellen im Web ({{ hits|length }})</h2>
+    <h2>{% ui 'Fundstellen im Web' 'Web findings' %} ({{ hits|length }})</h2>
     <ol class="hits">
       {% for hit in hits %}
-        <li><strong>{{ hit.titel|default:"(ohne Titel)" }}</strong><br><span class="url">{{ hit.url }}</span>
+        <li><strong>{{ hit.titel|default:"(untitled)" }}</strong><br><span class="url">{{ hit.url }}</span>
           {% if hit.auszug %}<br><span class="snippet">{{ hit.auszug }}</span>{% endif %}</li>
       {% endfor %}
     </ol>
   {% endif %}{% endwith %}
 
-  {% if lookup.sources %}
-    <h2>Abgefragte Quellen</h2>
+  {% with sources=lookup.sources|alphabetical_sources %}{% if sources %}
+    <h2>{% ui 'Abgefragte Quellen' 'Queried sources' %}</h2>
     <table>
-      {% for s in lookup.sources %}
-        <tr><th>{{ s.source }}</th><td>{% if s.ok %}<span class="ok">abgefragt</span>{% else %}<span class="err">Fehler: {{ s.error }}</span>{% endif %}</td></tr>
+      {% for s in sources %}
+        {% if s.source != "FRITZ!Box Fingerprint" or s.data.classification.likelyFritzBox %}
+        <tr><th>{{ s.source }}</th><td>{% if s.ok %}<span class="ok">{% ui 'abgefragt' 'queried' %}</span>{% else %}<span class="err">{% ui 'Fehler' 'Error' %}: {{ s.error }}</span>{% endif %}</td></tr>
+        {% endif %}
       {% endfor %}
     </table>
 
     <div class="appendix">
-      <h2>Anhang: Rohdaten</h2>
-      {% for s in lookup.sources %}{% if s.ok %}
+      <h2>{% ui 'Anhang: Rohdaten' 'Appendix: raw data' %}</h2>
+      {% for s in sources %}{% if s.ok %}{% if s.source != "FRITZ!Box Fingerprint" or s.data.classification.likelyFritzBox %}
         <div class="source">
           <h3>{{ s.source }}</h3>
           <pre>{{ s.data|pretty_json }}</pre>
         </div>
-      {% endif %}{% endfor %}
+      {% endif %}{% endif %}{% endfor %}
     </div>
-  {% endif %}
+  {% endif %}{% endwith %}
 </body>
 </html>

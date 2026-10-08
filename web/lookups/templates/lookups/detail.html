@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% load static %}
+{% load static ui_tags i18n %}{% get_current_language as LANGUAGE_CODE %}
 {% block title %}{{ lookup.query }} · Who Are You{% endblock %}
 {% block head %}
   {% if lookup.is_running %}
@@ -8,50 +8,110 @@
   {% endif %}
 {% endblock %}
 {% block content %}
-<p><a href="{% url 'lookups:index' %}">← Neue Abfrage</a></p>
+<p><a href="{% url 'lookups:index' %}">← {% ui 'Neue Abfrage' 'New query' %}</a></p>
 <div class="title-row">
   <h1>{{ lookup.query }}</h1>
   <div class="toolbar">
-    {% with label=lookup.note|yesno:"Notiz bearbeiten,Notiz hinzufügen" %}
+    {% if lookup.note %}{% ui 'Notiz bearbeiten' 'Edit note' as label %}{% else %}{% ui 'Notiz hinzufügen' 'Add note' as label %}{% endif %}
     <button type="button" class="icon{% if lookup.note %} on{% endif %}" popovertarget="note-pop" title="{{ label }}" aria-label="{{ label }}">
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg></button>
-    {% endwith %}
     <div id="l-actions" data-h="{{ fragments.actions.h }}">{{ fragments.actions.html }}</div>
   </div>
 </div>
 {% if lookup.note %}<p class="note">{{ lookup.note }}</p>{% endif %}
+{% if enrichment_setup_required %}
+<p class="muted enrichment-hint">
+  {% if enrichment_requires_asn %}
+    {% ui 'Aktive Anreicherung ist für diesen Hostnamen erst verfügbar, wenn unter Eigene Systeme erlaubte Origin-ASNs hinterlegt sind.' 'Active enrichment for this hostname is available after allowed origin ASNs have been added under Owned systems.' %}
+  {% else %}
+    {% ui 'Aktive Anreicherung ist für als eigene Systeme registrierte IP-Adressen und Hostnamen verfügbar.' 'Active enrichment is available for IP addresses and hostnames registered as owned systems.' %}
+  {% endif %}
+  <button type="button" class="link-button" popovertarget="owned-pop">{% ui 'Dieses System einrichten' 'Set up this system' %}</button>
+</p>
+{% endif %}
 <div id="note-pop" popover class="note-pop">
   <form method="post" action="{% url 'lookups:note' lookup.pk %}">{% csrf_token %}
-    <label for="note-field"><strong>Notiz</strong></label>
+    <label for="note-field"><strong>{% ui 'Notiz' 'Note' %}</strong></label>
     <div class="note-form">
-      <input id="note-field" name="note" value="{{ lookup.note }}" maxlength="200" placeholder="z. B. Anruf vom 05.10., angeblich Paketdienst">
-      <button class="small">Speichern</button>
+      <input id="note-field" name="note" value="{{ lookup.note }}" maxlength="200" placeholder="{% ui 'z. B. Anruf vom 05.10., angeblich Paketdienst' 'e.g. call on 2026-10-05, allegedly a parcel service' %}">
+      <button class="small">{% ui 'Speichern' 'Save' %}</button>
     </div>
-    {% if lookup.note %}<p class="muted note-tip">Feld leeren und speichern entfernt die Notiz.</p>{% endif %}
+    {% if lookup.note %}<p class="muted note-tip">{% ui 'Feld leeren und speichern entfernt die Notiz.' 'Clear the field and save to remove the note.' %}</p>{% endif %}
   </form>
 </div>
+{% if user.is_staff and owned_suggestion %}
+<div id="owned-pop" popover class="note-pop owned-pop">
+  <form method="post" action="{% url 'lookups:own_target' lookup.pk %}">{% csrf_token %}
+    <label for="owned-value"><strong>{% ui 'Eigenes System einrichten' 'Set up owned system' %}</strong></label>
+    <p class="muted note-tip">{% ui 'Die Vorbelegung stammt ausschließlich aus den Rohdaten dieser Analyse; beim Öffnen wird keine neue Netzabfrage gestartet. Bitte prüfe die Angaben vor dem Speichern.' 'The suggestions use only this analysis’s raw data; opening this dialog does not start a new network lookup. Review the values before saving.' %}</p>
+    <label for="owned-value">{% ui 'Ziel' 'Target' %}
+      <input id="owned-value" value="{{ owned_suggestion.value }}" readonly></label>
+    {% if owned_suggestion.addresses %}
+      <p class="muted note-tip">{% ui 'Aktuelle DNS-Auflösung' 'Current DNS resolution' %}: {{ owned_suggestion.addresses|join:", " }}</p>
+    {% endif %}
+    {% if lookup.kind == "ip" %}
+    <label for="owned-dns-name">{% ui 'DNS-Name zur IP-Bindung' 'DNS name for IP binding' %}
+      <input id="owned-dns-name" name="dns_name" value="{{ owned_suggestion.dns_name }}" maxlength="255" placeholder="router.example.org"></label>
+    <p class="muted note-tip">{% ui 'Vorbelegt ist der Reverse-DNS-Name, falls vorhanden. Für aktive Prüfungen muss dieser Name weiterhin auf diese IP auflösen; er ist kein Eigentumsnachweis.' 'The reverse-DNS name is prefilled when available. For active checks, this name must still resolve to this IP; it is not proof of ownership.' %}</p>
+    {% endif %}
+    <label for="owned-provider">{% ui 'Provider / Netzbetreiber' 'Provider / network operator' %}
+      <input id="owned-provider" name="provider" value="{{ owned_suggestion.provider }}" maxlength="200" autocomplete="organization"></label>
+    <label for="owned-asn">{% ui 'Erlaubte Origin-ASNs' 'Allowed origin ASNs' %}
+      <input id="owned-asn" name="asn" value="{{ owned_suggestion.asn }}" maxlength="100" placeholder="AS3320, AS3209" {% if lookup.kind == "host" %}required{% endif %}></label>
+    <p class="muted note-tip">{% if lookup.kind == "host" %}{% ui 'Bei aktiven Hostnamen muss jede aktuell aufgelöste Adresse zu mindestens einem dieser ASNs gehören. Der Providername ist nur Kontext; technisch geprüft werden die ASNs.' 'For active hostnames, every currently resolved address must belong to at least one of these ASNs. The provider name is context only; the ASNs are checked technically.' %}{% else %}{% ui 'Bei aktiver Anreicherung wird geprüft, ob diese IP weiterhin zu mindestens einem dieser ASNs gehört. Der Providername ist nur Kontext.' 'During active enrichment, WAY checks whether this IP still belongs to at least one of these ASNs. The provider name is context only.' %}{% endif %}</p>
+    {% if owned_suggestion.evidence %}<p class="muted note-tip">{% ui 'Vorbelegt aus' 'Prefilled from' %}: {{ owned_suggestion.evidence }}</p>{% endif %}
+    <label class="check enrich-confirm"><input type="checkbox" name="ownership_confirmation" value="confirmed" required>
+      <span>{% ui 'Ich bestätige, dass dieses Ziel mir gehört oder ich es ausdrücklich verwalten darf.' 'I confirm that I own this target or am explicitly authorized to administer it.' %}</span></label>
+    <button class="small">{% ui 'Als eigenes System speichern' 'Save as owned system' %}</button>
+  </form>
+</div>
+{% endif %}
+{% if enrichment_allowed %}
+<div id="enrich-pop" popover class="note-pop enrich-pop">
+  <form method="post" action="{% url 'lookups:enrich' lookup.pk %}">{% csrf_token %}
+    <label for="enrich-profile"><strong>{% ui 'Aktive Anreicherung' 'Active enrichment' %}</strong></label>
+    <p class="muted note-tip">{% ui 'Nur für dieses als eigenes System eingetragene Ziel. Der neue Lauf bleibt vom passiven Ursprungslauf getrennt.' 'Only for this target registered as owned. The new run remains separate from the passive source run.' %}</p>
+    <label for="enrich-profile">{% ui 'Prüfprofil' 'Probe profile' %}</label>
+    <select id="enrich-profile" name="profile">
+      <option value="generic-router">{% ui 'Generischer Router – TLS, Header und Titel auf /' 'Generic router – TLS, headers and title at /' %}</option>
+      <option value="fritzbox">{% ui 'FRITZ!Box – zusätzlich /jason_boxinfo.xml' 'FRITZ!Box – additionally /jason_boxinfo.xml' %}</option>
+      <option value="speedport">{% ui 'Speedport (experimentell) – zusätzlich /data/Status.json' 'Speedport (experimental) – additionally /data/Status.json' %}</option>
+    </select>
+    <div class="enrich-fields">
+      <label>{% ui 'Freigegebene Web-Ports' 'Approved web ports' %}
+        <input name="active_ports" inputmode="numeric" placeholder="443" maxlength="23"></label>
+      <label>{% ui 'Timeout je Anfrage' 'Timeout per request' %}
+        <input name="active_timeout" type="number" min="2" max="20" placeholder="8"></label>
+    </div>
+    <label class="check enrich-confirm"><input type="checkbox" name="authorization" value="confirmed" required>
+      <span>{% ui 'Ich bestätige, dass ich dieses Ziel besitze oder ausdrücklich prüfen darf.' 'I confirm that I own this target or have explicit authorization to test it.' %}</span></label>
+    <p class="muted note-tip">{% ui 'Das Speedport-Profil nutzt nur den unauthentifizierten Statuspfad; keine Challenge-Response- oder TR-064-Anfragen. Alle Profile sind sequenziell, maximal vier Ports, ohne Redirects, Anmeldung, Zugangsdaten, Brute Force, Exploits oder Schwachstellenproben.' 'The Speedport profile uses only the unauthenticated status path; no challenge-response or TR-064 requests. All profiles are sequential, at most four ports, with no redirects, sign-in, credentials, brute force, exploits, or vulnerability probes.' %}</p>
+    <button class="small">{% ui 'Anreicherung starten' 'Start enrichment' %}</button>
+  </form>
+</div>
+{% endif %}
 {% if runs %}
 <details class="runs">
-  <summary>Weitere Analysen dieser Abfrage ({{ runs|length }})</summary>
+  <summary>{% ui 'Weitere Analysen dieser Abfrage' 'Other analyses of this query' %} ({{ runs|length }})</summary>
   {% for run in runs %}
   <details class="run">
-    <summary>{{ run.created_at|date:"d.m.Y H:i" }}
-      {% if run.created_at > lookup.created_at %}<span class="muted">(neuer)</span>{% endif %}
-      · {% if run.risk %}<span class="risk risk-{{ run.risk }}">Risiko {{ run.risk }}</span>{% else %}{{ run.get_status_display }}{% endif %}
-      {% if run.as_of %}<span class="muted">· Stand {{ run.as_of|date:"d.m.Y" }}</span>{% endif %}
-      <span class="muted">· {% if run.changes is None %}erste Analyse{% elif run.changes %}{{ run.changes|length }} Änderung{{ run.changes|length|pluralize:"en" }}{% else %}unverändert{% endif %}</span>
+    <summary>{{ run.created_at|ui_datetime }}
+      {% if run.created_at > lookup.created_at %}<span class="muted">({% ui 'neuer' 'newer' %})</span>{% endif %}
+      · {% if run.risk %}<span class="risk risk-{{ run.risk }}">{% ui 'Risiko' 'Risk' %} {{ run.risk|risk_label }}</span>{% else %}{{ run.status|status_label }}{% endif %}
+      {% if run.as_of %}<span class="muted">· {% ui 'Stand' 'As of' %} {{ run.as_of|ui_date }}</span>{% endif %}
+      <span class="muted">· {% if run.changes is None %}{% ui 'erste Analyse' 'first analysis' %}{% elif run.changes %}{% if LANGUAGE_CODE == 'en' %}{{ run.changes|length }} change{{ run.changes|length|pluralize }}{% else %}{{ run.changes|length }} Änderung{{ run.changes|length|pluralize:"en" }}{% endif %}{% else %}{% ui 'unverändert' 'unchanged' %}{% endif %}</span>
     </summary>
     {% if run.changes %}
     <ul class="changes">
       {% for key, before, after in run.changes %}<li><b>{{ key }}</b>: {{ before }} → {{ after }}</li>{% endfor %}
     </ul>
     {% elif run.changes is None %}
-    <p class="muted">Keine frühere Analyse zum Vergleich.</p>
+    <p class="muted">{% ui 'Keine frühere Analyse zum Vergleich.' 'No previous analysis available for comparison.' %}</p>
     {% else %}
-    <p class="muted">Gegenüber der Analyse davor hat sich nichts Messbares geändert.</p>
+    <p class="muted">{% ui 'Gegenüber der Analyse davor hat sich nichts Messbares geändert.' 'No measurable change from the previous analysis.' %}</p>
     {% endif %}
-    <p class="run-open">{% if run.note %}<span class="muted">Notiz: {{ run.note }}</span>{% endif %}
-      <a class="button small" href="{% url 'lookups:detail' run.pk %}">Öffnen</a></p>
+    <p class="run-open">{% if run.note %}<span class="muted">{% ui 'Notiz' 'Note' %}: {{ run.note }}</span>{% endif %}
+      <a class="button small" href="{% url 'lookups:detail' run.pk %}">{% ui 'Öffnen' 'Open' %}</a></p>
   </details>
   {% endfor %}
 </details>
@@ -61,15 +121,15 @@
   <p class="muted" id="l-meta" data-h="{{ fragments.meta.h }}">{{ fragments.meta.html }}</p>
   <div id="l-history" data-h="{{ fragments.history.h }}">{{ fragments.history.html }}</div>
   <div class="progress" id="l-progress" data-h="{{ fragments.progress.h }}">{{ fragments.progress.html }}</div>
-  <p class="muted" id="l-conn" hidden>Verbindung unterbrochen – neuer Versuch läuft …</p>
+  <p class="muted" id="l-conn" hidden>{% ui 'Verbindung unterbrochen – neuer Versuch läuft …' 'Connection interrupted – retrying …' %}</p>
   <div id="l-error" data-h="{{ fragments.error.h }}">{{ fragments.error.html }}</div>
   <div id="l-report" data-h="{{ fragments.report.h }}">{{ fragments.report.html }}</div>
   <div id="l-scan" data-h="{{ fragments.scan.h }}">{{ fragments.scan.html }}</div>
   <div id="l-hits" data-h="{{ fragments.hits.h }}">{{ fragments.hits.html }}</div>
 
   <div id="l-sources-h" class="sources-head"{% if not sources %} hidden{% endif %}>
-    <h2>Rohdaten</h2>
-    <button type="button" class="copy secondary" data-copy-all>Alle kopieren</button>
+    <h2>{% ui 'Rohdaten' 'Raw data' %}</h2>
+    <button type="button" class="copy secondary" data-copy-all>{% ui 'Alle kopieren' 'Copy all' %}</button>
   </div>
   <div id="l-sources">
     {% for s in sources %}<div class="src" data-key="{{ s.key }}" data-h="{{ s.h }}">{{ s.html }}</div>{% endfor %}

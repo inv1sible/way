@@ -23,9 +23,9 @@ class BlockingFetcher(URLFetcher):
         block_external(url)
 
 
-def filename(lookup):
+def filename(lookup, language="de"):
     query = re.sub(r"[^A-Za-z0-9.+-]+", "_", lookup.query).strip("_")[:60]
-    return f"way-{lookup.kind}-{query}-{timezone.localtime(lookup.created_at):%Y%m%d-%H%M}.pdf"
+    return f"way-{lookup.kind}-{query}-{language}-{timezone.localtime(lookup.created_at):%Y%m%d-%H%M}.pdf"
 
 
 def render(lookup, request):

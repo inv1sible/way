@@ -12,6 +12,7 @@ die anderen nicht auf. Quellen mit API-Key sind aktiv, sobald der Key in `.env` 
 | Bundesnetzagentur-Maßnahmenliste | – | Ob gegen die Nummer Maßnahmen verhängt wurden (Abschaltung, Rechnungslegungsverbot) |
 | Clever Dialer | – | Bewertungen und Spam-Einstufung |
 | Websuche (SearXNG) | – | Fundstellen in üblichen Schreibweisen; nur Treffer, die die Nummer wirklich enthalten |
+| Stammnummern-Erkennung | – | begrenzter Abgleich plausibler deutscher Festnetz-Stammnummern (4/5, ausnahmsweise 6 Stellen Durchwahl); abgeleitete Suchbegriffe werden nicht gespeichert und nicht hervorgehoben dargestellt; veröffentlichte Kontakt- und Impressumsnummern werden getrennt von der konkreten Durchwahl dokumentiert |
 | Spam-Portale und Telefonbücher | – | Gezielte Suche auf bekannten Bewertungsportalen |
 
 ## IP-Adressen
@@ -31,6 +32,7 @@ die anderen nicht auf. Quellen mit API-Key sind aktiv, sobald der Key in `.env` 
 | abuse.ch ThreatFox, URLhaus | `ABUSECH_KEY` | Malware-Infrastruktur und Schadsoftware-URLs |
 | CrowdSec CTI | `CROWDSEC_KEY` | Beobachtete Angriffe und Einstufung aus dem CrowdSec-Netz |
 | Censys | `CENSYS_TOKEN` | Dienste und Zertifikate aus Censys' Internet-Scans |
+| FRITZ!Box Fingerprint | – | Passive AVM-/FRITZ!-Indizien; optional nach Berechtigungsbestätigung wenige direkte Web-Abrufe |
 | Frühere eigene Analysen | – | Vergleich mit früheren Läufen derselben Abfrage |
 
 Mit Datum ("Stand") zusätzlich: BGP-Historie (RIPEstat) und Passive DNS (AlienVault OTX).

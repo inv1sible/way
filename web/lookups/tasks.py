@@ -25,7 +25,7 @@ def _save_sources(lookup_id, sources):
     connection.close()  # der Thread aus asyncio.to_thread behält sonst seine Verbindung
 
 
-async def _collect_with_progress(lookup, scan=False, scan_asns=None):
+async def _collect_with_progress(lookup, active=False, scan=False, scan_asns=None, active_asns=None, active_dns_name=None):
     """Sammelt die Quellen und speichert jede, sobald sie fertig ist (Zwischenstand für die Oberfläche)."""
     lock, done = asyncio.Lock(), []
 
@@ -34,8 +34,12 @@ async def _collect_with_progress(lookup, scan=False, scan_asns=None):
             done.append(result)
             await asyncio.to_thread(_save_sources, lookup.pk, list(done))
 
-    return await collect(lookup.kind, lookup.query, on_result=on_result, active=lookup.active_probe, scan=scan,
-                         scan_asns=scan_asns, as_of=lookup.as_of)
+    return await collect(
+        lookup.kind, lookup.query, on_result=on_result, active=active,
+        active_ports=lookup.active_ports, active_timeout=lookup.active_timeout,
+        active_profile=lookup.active_profile,
+        scan=scan, scan_asns=scan_asns, active_asns=active_asns, active_dns_name=active_dns_name, as_of=lookup.as_of,
+    )
 
 
 @shared_task
@@ -43,10 +47,20 @@ def run_lookup(lookup_id):
     lookup = Lookup.objects.get(pk=lookup_id)
     try:
         _update(lookup, status=Lookup.Status.COLLECTING, model=settings.OSINT_OLLAMA_MODEL)
-        # Erlaubnis zum Scannen erst hier endgültig prüfen: Der Eintrag kann seit dem Absenden entfernt worden sein.
+        # Berechtigungen erst hier endgültig prüfen: Der Eintrag kann seit dem Absenden entfernt worden sein.
+        active = lookup.active_probe and ownership.is_owned(lookup.kind, lookup.query)
         scan = lookup.port_scan and ownership.is_owned(lookup.kind, lookup.query)
         sources = asyncio.run(_collect_with_progress(
-            lookup, scan=scan, scan_asns=ownership.allowed_asns(lookup.kind, lookup.query) if scan else None))
+            lookup, active=active, scan=scan,
+            scan_asns=ownership.allowed_asns(lookup.kind, lookup.query) if scan else None,
+            active_asns=ownership.allowed_asns(lookup.kind, lookup.query) if active else None,
+            active_dns_name=ownership.expected_dns_name(lookup.kind, lookup.query) if active else None,
+        ))
+        if lookup.active_probe and not active:
+            sources.append({
+                "source": "Aktive Anreicherung", "ok": False,
+                "error": "Das Ziel ist nicht (mehr) als eigenes System eingetragen; die aktive Prüfung wurde nicht ausgeführt.",
+            })
         if lookup.port_scan and not scan:
             sources.append({
                 "source": "Portscan (nmap, Top-1000-Ports)", "ok": False,

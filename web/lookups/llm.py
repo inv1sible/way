@@ -11,11 +11,18 @@ MAX_DATA_CHARS = 15000
 SOURCE_CHARS = 2500  # je Quelle, damit eine ausführliche Quelle die anderen nicht verdrängt
 SEARCH_SOURCE_CHARS = 5000
 RISK_RE = re.compile(r"Risiko:\W*(niedrig|mittel|hoch|unklar)", re.IGNORECASE)
+RISK_EN_RE = re.compile(r"Risk:\W*(low|medium|high|unclear)", re.IGNORECASE)
+RISK_EN_TO_DE = {"low": "niedrig", "medium": "mittel", "high": "hoch", "unclear": "unklar"}
+RISK_DE_TO_EN = {value: key for key, value in RISK_EN_TO_DE.items()}
 
 SYSTEM_PROMPT = """Du bist ein sorgfältiger OSINT-Analyst. Du bekommst Rohdaten aus mehreren Quellen \
-zu einer Rufnummer, IP-Adresse oder einem Hostnamen und schreibst daraus einen kurzen Bericht auf Deutsch in Markdown.
+zu einer Rufnummer, IP-Adresse oder einem Hostnamen und schreibst daraus einen kurzen zweisprachigen Bericht \
+auf Deutsch und Englisch in Markdown. Die deutsche Fassung steht vollständig zuerst; danach folgt eine inhaltlich \
+gleichwertige englische Fassung. Fakten, Unsicherheiten, Quellen und Risikostufe müssen in beiden Fassungen \
+übereinstimmen.
 
 Gliederung, genau diese Überschriften:
+# Deutsch
 ## Kurzfazit
 2–3 Sätze: Wer oder was steckt vermutlich dahinter?
 ## Risikoeinschätzung
@@ -24,6 +31,17 @@ Erste Zeile exakt im Format "Risiko: niedrig" bzw. "mittel", "hoch" oder "unklar
 Stichpunkte; jeder Punkt nennt seine Quelle in eckigen Klammern, z. B. [RDAP].
 ## Empfehlungen
 Konkrete nächste Schritte.
+
+# English
+## Executive summary
+An accurate English rendering of the German summary.
+## Risk assessment
+The first line must be exactly "Risk: low", "Risk: medium", "Risk: high", or "Risk: unclear" and must match \
+the German risk level, followed by the rationale.
+## Findings
+Bullet points; every point names its source in square brackets, for example [RDAP].
+## Recommendations
+Concrete next steps equivalent to the German recommendations.
 
 Regeln:
 - Verwende ausschließlich die gelieferten Daten. Erfinde nichts. Fehlen Daten oder widersprechen sie sich, sag das.
@@ -40,6 +58,13 @@ Missbrauch und gehört ins Kurzfazit. Kein Treffer bedeutet nicht, dass die Numm
 Stellenanzeige, Gemeindebrief usw.), sind der wichtigste Hinweis auf den Anschlussinhaber: Nenne diese \
 Organisationen oder Personen im Kurzfazit mit Quelle. Nummern mit Durchwahl gehören oft zu einer \
 Telefonanlage derselben Organisation.
+- "Stammnummernabgleich (Websuche)" enthält einen begrenzten Abgleich plausibler Festnetz-Stammnummern; \
+die abgeleiteten Suchbegriffe werden nicht gespeichert. Leite daraus niemals eine Organisation ab, außer ein \
+Treffer nennt diese Organisation und eine veröffentlichte Kontakt- oder Zentralnummer klar zusammen. Bei \
+Polizei- oder Behördenbezug muss die Quelle als solche ausdrücklich genannt werden.
+- "Stammnummern-Zuordnung" trennt belegte Veröffentlichungen einer Zentralnummer strikt vom konkreten Anschluss: \
+Nenne eine Organisation nur in der dort dokumentierten Reichweite. Eine mögliche Durchwahl, ein gemeinsames Präfix, \
+eine Ortsvorwahl, ein Mobilfunk- oder Providerblock sind kein Nachweis für Anschlussinhaber oder Anruferidentität.
 - Die Websuche nennt, welche Suchmaschinen Ergebnisse geliefert haben und welche gesperrt waren. \
 Haben nur wenige geantwortet, weise darauf hin, dass die Suche unvollständig sein kann.
 - Clever Dialer: Sterne und Anzahl der Bewertungen, Anrufe und Blockierungen der letzten 30 Tage zeigen, \
@@ -62,6 +87,21 @@ Adressen eines dynamischen DNS-Namens). Nenne Änderungen seit der letzten Analy
 - "Censys" zeigt Dienste, Banner und Zertifikatsnamen aus dem Internet-Scan von Censys (Gratis-Tarif ohne \
 Historie und Schwachstellen). Fehlende Dienste heißen nicht, dass sie geschlossen sind; Zertifikatsnamen \
 und Banner sind Hinweise auf den Betreiber.
+- "FRITZ!Box Fingerprint" stuft nur die Geräteart ein, nicht das Sicherheitsrisiko. Beachte confidence, \
+direkt belegte Gerätefelder, Warnungen und Grenzen; passive Daten können veraltet sein. Erfinde niemals Modell \
+oder Firmware. Ein nicht erreichbarer BoxInfo-Endpunkt beweist nicht, dass das Ziel keine FRITZ!Box ist.
+- "Router Fingerprint" ist ein herstellerneutraler, ausdrücklich aktiv gestarteter Web-Metadatenabgleich. Ein \
+Router-/Gateway-Wort ist kein Modell-, Hersteller- oder Firmware-Nachweis. Erfinde daraus keine Zuordnung.
+- "Speedport Fingerprint" darf Modell oder Firmware nur nennen, wenn ein direkt geliefertes, unauthentifiziertes \
+Statusfeld dies belegt. Login-, 401-, 403- oder 404-Antworten sind kein Gegenbeweis.
+- "Dynamische Zielbindung (DNS/ASN)" ist bei aktiven Hostnamen ein verpflichtender Sicherheitsnachweis. Wenn sie \
+vorliegt, erkläre deutlich: Der genaue Name wurde für diesen Lauf auf aktuelle öffentliche Adressen mit erlaubtem \
+Origin-ASN gebunden und die Verbindung daran gepinnt; das ist keine unveränderliche Geräteidentität. Ist sie \
+fehlgeschlagen, dürfen keine aktiven Befunde als durchgeführt dargestellt werden.
+- Bei einem Hostnamen ohne diese aktive Quelle ist die DNS-Auflösung nur eine zeitgebundene Zuordnung zur aktuellen \
+Adresse, kein Eigentumsnachweis. Nenne diese Einschränkung kurz, wenn sie für die Einordnung relevant ist.
+- Bei einer alleinstehenden öffentlichen IP-Adresse erkläre kurz, dass sie neu zugewiesen sein, beim Provider enden \
+oder auf ein weitergeleitetes internes Gerät zeigen kann und daher keine dauerhafte Geräteidentität ist.
 - "Portscan" gibt es nur für eigene Systeme des Nutzers: Bewerte die Angriffsfläche. Auffällig sind \
 Dienste, die nicht aus dem Internet erreichbar sein sollten (Telnet, FTP, SMB, RDP, VNC, Datenbanken, \
 Redis, Docker-/Admin-Schnittstellen) und veraltete Versionen. Nenne konkrete Maßnahmen (Port per Firewall \
@@ -79,6 +119,16 @@ def build_prompt(kind, query, sources, as_of=None):
     label = {"phone": "die Rufnummer", "ip": "die IP-Adresse", "host": "den Hostnamen"}[kind]
     parts = []
     for source in sources:
+        # Ein negativer Router-Fingerprint ist für den allgemeinen Bericht kein Befund. Er bleibt
+        # als technische Rohquelle erhalten, soll aber weder Platz verbrauchen noch im Bericht auftauchen.
+        if source.get("source") in {"FRITZ!Box Fingerprint", "Router Fingerprint", "Speedport Fingerprint"} and not (
+            source.get("ok") and (
+                (source.get("data") or {}).get("classification", {}).get("likelyFritzBox") or
+                (source.get("data") or {}).get("classification", {}).get("likelyRouter") or
+                (source.get("data") or {}).get("classification", {}).get("likelySpeedport")
+            )
+        ):
+            continue
         text = json.dumps(source, ensure_ascii=False, separators=(",", ":"), default=str)
         cap = SEARCH_SOURCE_CHARS if source["source"].startswith(("Websuche", "Spam-Portale")) else SOURCE_CHARS
         parts.append(text if len(text) <= cap else text[:cap] + "…(gekürzt)")
@@ -111,14 +161,25 @@ def apply_risk_floor(report, risk, sources):
     if not floor or RISK_ORDER.get(risk, 0) >= RISK_ORDER[floor]:
         return report, risk
     note = f"Risiko: {floor} (angehoben wegen offener Ports mit erhöhtem Risiko, siehe Portscan)"
+    english = RISK_DE_TO_EN[floor]
+    english_note = f"Risk: {english} (raised because of higher-risk open ports; see port scan)"
     if RISK_RE.search(report or ""):
-        return RISK_RE.sub(note, report, count=1), floor
+        report = RISK_RE.sub(note, report, count=1)
+        if RISK_EN_RE.search(report):
+            report = RISK_EN_RE.sub(english_note, report, count=1)
+        return report, floor
+    if RISK_EN_RE.search(report or ""):
+        report = RISK_EN_RE.sub(english_note, report, count=1)
+        return f"{report}\n\n{note}", floor
     return f"{report}\n\n{note}", floor
 
 
 def extract_risk(text):
     match = RISK_RE.search(text or "")
-    return match.group(1).lower() if match else ""
+    if match:
+        return match.group(1).lower()
+    match = RISK_EN_RE.search(text or "")
+    return RISK_EN_TO_DE.get(match.group(1).lower(), "") if match else ""
 
 
 def write_report(kind, query, sources, as_of=None):

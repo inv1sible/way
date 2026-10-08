@@ -1,13 +1,14 @@
 {% extends "base.html" %}
-{% block title %}Anmelden · Who Are You{% endblock %}
+{% load ui_tags %}
+{% block title %}{% ui 'Anmelden' 'Sign in' %} · Who Are You{% endblock %}
 {% block content %}
 <form method="post" class="card login">{% csrf_token %}
-  <h1>Anmelden</h1>
-  {% if form.errors %}<p class="error">E-Mail-Adresse oder Passwort falsch, oder die E-Mail-Adresse ist noch nicht bestätigt.</p>{% endif %}
+  <h1>{% ui 'Anmelden' 'Sign in' %}</h1>
+  {% if form.errors %}<p class="error">{% ui 'E-Mail-Adresse oder Passwort falsch, oder die E-Mail-Adresse ist noch nicht bestätigt.' 'Incorrect email address or password, or the email address has not been confirmed yet.' %}</p>{% endif %}
   <label>E-Mail <input name="username" type="text" inputmode="email" autocomplete="username" autofocus required></label>
-  <label>Passwort <input name="password" type="password" autocomplete="current-password" required></label>
+  <label>{% ui 'Passwort' 'Password' %} <input name="password" type="password" autocomplete="current-password" required></label>
   <input type="hidden" name="next" value="{{ next }}">
-  <button>Anmelden</button>
-  <p class="muted"><a href="{% url 'password_reset' %}">Passwort vergessen?</a> · Registrierung nur mit Einladung.</p>
+  <button>{% ui 'Anmelden' 'Sign in' %}</button>
+  <p class="muted"><a href="{% url 'password_reset' %}">{% ui 'Passwort vergessen?' 'Forgot password?' %}</a> · {% ui 'Registrierung nur mit Einladung.' 'Registration by invitation only.' %}</p>
 </form>
 {% endblock %}

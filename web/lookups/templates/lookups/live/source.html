@@ -1,5 +1,5 @@
-{% load report_tags %}<details>
-  <summary>{{ s.source }}{% if not s.ok %} <span class="risk risk-hoch">Fehler</span>{% endif %}</summary>
-  <div class="raw-tools"><button type="button" class="copy secondary" data-copy-source>Kopieren</button></div>
+{% load report_tags ui_tags %}<details{% if s.source == "FRITZ!Box Fingerprint" %} id="source-fritzbox-fingerprint"{% endif %}>
+  <summary>{{ s.source }}{% if not s.ok %} <span class="risk risk-hoch">{% ui 'Fehler' 'Error' %}</span>{% endif %}</summary>
+  <div class="raw-tools"><button type="button" class="copy secondary" data-copy-source>{% ui 'Kopieren' 'Copy' %}</button></div>
   {% if s.ok %}<pre class="raw">{{ s.data|pretty_json }}</pre>{% else %}<p class="error raw">{{ s.error }}</p>{% endif %}
 </details>

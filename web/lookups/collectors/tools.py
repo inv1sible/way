@@ -9,14 +9,14 @@ from django.conf import settings
 from . import run_source
 
 
-async def call(client, tool, timeout=45, **params):
+async def call(client, tool, request_timeout=45, **params):
     if not settings.OSINT_TOOLS_TOKEN:
         raise RuntimeError("TOOLS_TOKEN ist nicht gesetzt")
     response = await client.post(
         f"{settings.OSINT_TOOLS_URL}/run",
         json={"tool": tool, **params},
         headers={"Authorization": f"Bearer {settings.OSINT_TOOLS_TOKEN}"},
-        timeout=timeout,
+        timeout=request_timeout,
     )
     try:
         body = response.json()
@@ -47,8 +47,34 @@ async def web(client, ip, sni=None, port=443):
     return await call(client, "web", ip=ip, port=port, **({"sni": sni} if sni else {}))
 
 
+async def fritzbox(client, ip, sni=None, ports=None, timeout=8):
+    params = {"ip": ip, "ports": ports or [443, 8443], "timeout": timeout}
+    if sni:
+        params["sni"] = sni
+    # Maximal vier Ports mit sequenziellen, kurzen Abrufen im Werkzeugdienst.
+    # Je Port: ein TLS-Handshake sowie HEAD+optional GET für zwei feste Pfade, alles sequenziell.
+    total_timeout = min(450, len(params["ports"]) * (5 * timeout + 5) + 10)
+    return await call(client, "fritzbox", request_timeout=total_timeout, **params)
+
+
+async def router(client, ip, sni=None, ports=None, timeout=8):
+    params = {"ip": ip, "ports": ports or [443], "timeout": timeout, "profile": "generic"}
+    if sni:
+        params["sni"] = sni
+    total_timeout = min(250, len(params["ports"]) * (3 * timeout + 5) + 10)
+    return await call(client, "router", request_timeout=total_timeout, **params)
+
+
+async def speedport(client, ip, sni=None, ports=None, timeout=8):
+    params = {"ip": ip, "ports": ports or [80, 443], "timeout": timeout, "profile": "speedport"}
+    if sni:
+        params["sni"] = sni
+    total_timeout = min(450, len(params["ports"]) * (5 * timeout + 5) + 10)
+    return await call(client, "router", request_timeout=total_timeout, **params)
+
+
 async def scan(client, ip):
-    return await call(client, "scan", timeout=300, ip=ip)
+    return await call(client, "scan", request_timeout=300, ip=ip)
 
 
 def passive_ip_jobs(client, ip):

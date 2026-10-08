@@ -51,6 +51,11 @@ th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--bor
 .risk-unklar, .risk-none { color: var(--neutral); }
 .report h2 { margin-top: 1.2rem; font-size: 1.1rem; }
 .report h2:first-child { margin-top: 0; }
+.language-switch { display: inline-flex; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+.language-switch button { padding: 6px 14px; border-radius: 0; background: var(--surface); color: var(--accent); }
+.language-switch button + button { border-left: 1px solid var(--border); }
+.language-switch button.selected { background: var(--accent); color: #fff; }
+.global-language input { display: none; }
 details { background: var(--surface); border: 1px solid var(--border); border-radius: 6px; margin: 6px 0; padding: 8px 12px; }
 summary { cursor: pointer; }
 pre { overflow-x: auto; font-size: .85rem; margin: 8px 0 0; }
@@ -60,6 +65,14 @@ pre { overflow-x: auto; font-size: .85rem; margin: 8px 0 0; }
 @media (max-width: 600px) { .search { flex-direction: column; } }
 header nav { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; justify-content: flex-end; }
 header nav form { display: inline; }
+header nav form:has(.icon) { display: inline-flex; align-items: center; gap: 6px; }
+.admin-menu { position: relative; margin: 0; padding: 0; border: 0; background: none; }
+.admin-menu > summary { list-style: none; }
+.admin-menu > summary::-webkit-details-marker { display: none; }
+.admin-menu-pop { position: absolute; z-index: 10; top: calc(100% + 6px); right: 0; min-width: 10rem; display: grid;
+  padding: 6px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); box-shadow: 0 8px 24px rgb(0 0 0 / .14); }
+.admin-menu-pop a { padding: 7px 9px; border-radius: 5px; text-decoration: none; white-space: nowrap; }
+.admin-menu-pop a:hover, .admin-menu-pop a:focus-visible { background: var(--bg); }
 .message { background: var(--surface); border: 1px solid var(--border); border-left: 4px solid var(--accent); border-radius: 6px; padding: 10px 14px; }
 .stack { display: grid; gap: 10px; margin-top: 16px; }
 .check { display: flex; align-items: center; gap: 8px; }
@@ -177,6 +190,9 @@ button:disabled { opacity: .5; cursor: default; }
 
 /* Notiz zu einer Analyse */
 .note { margin: 0 0 8px; font-style: italic; }
+.enrichment-hint { margin: 0 0 12px; }
+.icon.setup { color: var(--muted); }
+.link-button { appearance: none; border: 0; padding: 0; background: transparent; color: var(--accent); font: inherit; cursor: pointer; text-decoration: underline; }
 .note-tip { margin: 4px 0 0; font-size: .85rem; }
 .t-note { color: var(--muted); font-weight: 400; white-space: normal; word-break: normal; overflow-wrap: anywhere; }
 
@@ -208,4 +224,11 @@ a.button.small { padding: 4px 12px; font-size: .85rem; }
 .note-pop { width: min(32rem, calc(100vw - 32px)); padding: 16px; border: 1px solid var(--border); border-radius: 10px;
   background: var(--surface); color: var(--text); }
 .note-pop::backdrop { background: rgb(0 0 0 / .35); }
+.enrich-pop { width: min(38rem, calc(100vw - 32px)); }
+.owned-pop { width: min(38rem, calc(100vw - 32px)); }
+.owned-pop input { margin: 4px 0 10px; }
+.enrich-pop select, .enrich-pop input { margin: 4px 0 10px; }
+.enrich-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.enrich-fields label { display: grid; }
+.enrich-confirm { margin: 4px 0 10px; }
 .note-form { display: flex; gap: 8px; margin-top: 8px; }

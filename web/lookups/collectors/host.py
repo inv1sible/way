@@ -3,7 +3,7 @@
 import asyncio
 import socket
 
-from . import history, ip, run_source, threatintel, tools
+from . import fritzbox, history, ip, run_source, threatintel, tools
 
 DYNDNS = {
     "myfritz.net": "AVM MyFRITZ!, zeigt auf den Internetanschluss einer FRITZ!Box (meist privat)",
@@ -28,27 +28,51 @@ async def resolve(host):
 
 
 SCAN_SOURCE = "Portscan (nmap, Top-1000-Ports)"
+BINDING_SOURCE = "Dynamische Zielbindung (DNS/ASN)"
 
 
-async def scan_scope_problem(client, addresses, allowed):
-    """Warum der Portscan für diesen Hostnamen nicht erlaubt ist (None = erlaubt).
+async def verify_host_binding(client, host, addresses, allowed):
+    """Prüft die indirekte Eigentumsbindung eines dynamischen Hostnamens fail-closed.
 
     Ein Name beweist nicht, wem die Adresse gehört, auf die er zeigt (CDN, Cloud, geänderter
-    DNS-Eintrag): Alle Adressen müssen in den für den Eintrag festgelegten Netzen liegen."""
+    DNS-Eintrag): Alle Adressen müssen aktuell in den beim Asset erlaubten Origin-ASNs liegen.
+    Die Daten dokumentieren eine zeitgebundene Namensbindung, niemals eine dauerhafte IP-Identität.
+    """
     if not allowed:
-        return "Für diesen Hostnamen ist kein Netz (AS-Nummer) hinterlegt; der Scan wurde nicht ausgeführt."
+        raise RuntimeError("Für diesen Hostnamen ist kein Netz (Origin-ASN) hinterlegt.")
+    resolved = []
     for address in addresses:
         try:
             found = set((await tools.asn(client, address)).get("asn", []))
-        except Exception as exc:  # im Zweifel nicht scannen
-            return f"Netzprüfung für {address} fehlgeschlagen ({exc}); der Scan wurde nicht ausgeführt."
+        except Exception as exc:
+            raise RuntimeError(f"Origin-ASN-Prüfung für {address} fehlgeschlagen ({exc}).") from None
         if not found & allowed:
-            return (f"{address} liegt in {', '.join(sorted(found)) or 'einem unbekannten Netz'}, erlaubt sind "
-                    f"{', '.join(sorted(allowed))}: Der Name zeigt auf ein fremdes Netz, der Scan wurde nicht ausgeführt.")
+            raise RuntimeError(
+                f"{address} liegt in {', '.join(sorted(found)) or 'einem unbekannten Netz'}, erlaubt sind "
+                f"{', '.join(sorted(allowed))}: Der Name zeigt auf ein fremdes Netz."
+            )
+        resolved.append({"address": address, "originAsns": sorted(found)})
+    return {
+        "hostname": host,
+        "method": "exakter eingetragener Hostname + aktuelle DNS-Auflösung + Origin-ASN-Abgleich",
+        "resolvedAddresses": resolved,
+        "allowedOriginAsns": sorted(allowed),
+        "bindingIsIndirect": True,
+        "warning": "Der Hostname folgt der dynamischen IP. Das belegt keine unveränderliche Geräteidentität.",
+    }
+
+
+async def scan_scope_problem(client, addresses, allowed):
+    """Warum der Portscan für diesen Hostnamen nicht erlaubt ist (None = erlaubt)."""
+    try:
+        await verify_host_binding(client, "(Hostname)", addresses, allowed)
+    except RuntimeError as exc:
+        return f"{exc} Der Scan wurde nicht ausgeführt."
     return None
 
 
-async def collect(client, host, active=False, scan=False, scan_asns=None, as_of=None):
+async def collect(client, host, active=False, active_ports=None, active_timeout=8, active_profile="fritzbox",
+                  scan=False, scan_asns=None, active_asns=None, as_of=None):
     domain_jobs = [(f"{name} (Hostname)", fn, *args) for name, fn, *args in threatintel.jobs(client, host, "domain")]
     domain_jobs += [("DNS-Einträge (dig)", tools.dns, client, host), ("WHOIS Domain (lokal)", tools.whois, client, host)]
     if as_of:
@@ -70,7 +94,23 @@ async def collect(client, host, active=False, scan=False, scan_asns=None, as_of=
         target = addresses[0]
         dns["data"]["analysierte_adresse"] = target
         refusal = await scan_scope_problem(client, addresses, scan_asns) if scan else None
-        results += await ip.collect(client, target, active=active, sni=host, scan=scan and not refusal)
+        active_blocked = fritzbox.validate_resolved_addresses(addresses) if active else None
+        if active:
+            if active_blocked:
+                binding = {"source": BINDING_SOURCE, "ok": False, "error": active_blocked}
+            else:
+                binding = await run_source(BINDING_SOURCE, verify_host_binding, client, host, addresses, active_asns)
+                if not binding["ok"]:
+                    active_blocked = (
+                        "Dynamische Zielbindung über Hostname und Origin-ASN konnte nicht bestätigt werden; "
+                        "aktive Prüfung wurde gesperrt."
+                    )
+            results.append(binding)
+        results += await ip.collect(
+            client, target, active=active, sni=host, active_ports=active_ports, active_timeout=active_timeout,
+            active_profile=active_profile,
+            active_blocked=active_blocked, scan=scan and not refusal,
+        )
         if refusal:
             results.append({"source": SCAN_SOURCE, "ok": False, "error": refusal})
     return results

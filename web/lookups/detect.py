@@ -6,9 +6,14 @@ from urllib.parse import urlsplit
 
 import phonenumbers
 from django.conf import settings
+from django.utils.translation import get_language
 
 PHONE_CHARS = re.compile(r"\+?[\d\s/()\-.]{3,30}")
 HOSTNAME = re.compile(r"(?=.{4,253}$)([a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z][a-z0-9-]{1,62}")
+
+
+def _message(german, english):
+    return english if (get_language() or "de").startswith("en") else german
 
 
 def _ip(text):
@@ -54,7 +59,10 @@ def detect(raw):
             if phonenumbers.is_possible_number(number):
                 return "phone", phonenumbers.format_number(number, phonenumbers.PhoneNumberFormat.E164)
 
-    raise ValueError("Keine IP-Adresse, kein Hostname und keine gültige Rufnummer erkannt.")
+    raise ValueError(_message(
+        "Keine IP-Adresse, kein Hostname und keine gültige Rufnummer erkannt.",
+        "No IP address, hostname, or valid phone number was detected.",
+    ))
 
 
 # Muster für Kandidaten in geteiltem Freitext, in der Reihenfolge ihrer Prüfung.

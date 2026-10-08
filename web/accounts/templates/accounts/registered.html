@@ -1,12 +1,13 @@
 {% extends "base.html" %}
-{% block title %}Fast geschafft · Who Are You{% endblock %}
+{% load ui_tags %}
+{% block title %}{% ui 'Fast geschafft' 'Almost done' %} · Who Are You{% endblock %}
 {% block content %}
 <div class="card login">
-  <h1>Fast geschafft</h1>
+  <h1>{% ui 'Fast geschafft' 'Almost done' %}</h1>
   {% if mailed %}
-    <p>Wir haben eine Bestätigungsmail an <strong>{{ email }}</strong> geschickt. Klicke auf den Link darin, danach kannst du dich anmelden.</p>
+    <p>{% ui 'Wir haben eine Bestätigungsmail geschickt an' 'We sent a confirmation email to' %} <strong>{{ email }}</strong>. {% ui 'Klicke auf den Link darin, danach kannst du dich anmelden.' 'Open its link, then you can sign in.' %}</p>
   {% else %}
-    <p class="error">Die Bestätigungsmail an {{ email }} konnte nicht verschickt werden. Bitte wende dich an einen Admin, der dein Konto freischalten kann.</p>
+    <p class="error">{% ui 'Die Bestätigungsmail konnte nicht verschickt werden an' 'The confirmation email could not be sent to' %} {{ email }}. {% ui 'Bitte wende dich an einen Admin, der dein Konto freischalten kann.' 'Contact an administrator who can activate your account.' %}</p>
   {% endif %}
 </div>
 {% endblock %}

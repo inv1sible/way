@@ -40,6 +40,7 @@ MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
     "whitenoise.middleware.WhiteNoiseMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
+    "django.middleware.locale.LocaleMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
@@ -99,7 +100,8 @@ LOGIN_URL = "login"
 LOGIN_REDIRECT_URL = "lookups:index"
 LOGOUT_REDIRECT_URL = "login"
 
-LANGUAGE_CODE = "de-de"
+LANGUAGE_CODE = "de"
+LANGUAGES = [("de", "Deutsch"), ("en", "English")]
 TIME_ZONE = env("TZ", "Europe/Berlin")
 USE_I18N = True
 USE_TZ = True

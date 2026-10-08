@@ -1,4 +1,5 @@
 import json
+import re
 
 from django import template
 from django.utils.safestring import mark_safe
@@ -8,11 +9,26 @@ register = template.Library()
 
 # html=False: HTML im KI-Text (z. B. aus Suchergebnissen übernommen) wird escaped statt gerendert.
 _md = MarkdownIt("commonmark", {"html": False}).enable("table")
-
-
 @register.filter
 def markdown(text):
     return mark_safe(_md.render(text or ""))
+
+
+@register.filter
+def report_parts(text):
+    """Zweisprachigen KI-Bericht teilen; ältere einsprachige Berichte bleiben unverändert sichtbar."""
+    value = text or ""
+    german = re.search(r"(?m)^# Deutsch\s*$", value)
+    english = re.search(r"(?m)^# English\s*$", value)
+    if not german or not english or german.start() >= english.start():
+        return {"bilingual": False, "single": value}
+    de_start = value.find("\n", german.end())
+    en_start = value.find("\n", english.end())
+    return {
+        "bilingual": True,
+        "de": value[de_start + 1:english.start()].strip() if de_start >= 0 else "",
+        "en": value[en_start + 1:].strip() if en_start >= 0 else "",
+    }
 
 
 @register.filter
@@ -22,7 +38,7 @@ def pretty_json(value):
 
 # Nur Websuche-Quellen: andere Quellen (z. B. URLhaus) enthalten Schadsoftware-URLs, die nicht als
 # klickbare Links erscheinen dürfen.
-SEARCH_SOURCES = ("Websuche", "Spam-Portale")
+SEARCH_SOURCES = ("Websuche", "Stammnummernabgleich", "Spam-Portale")
 
 
 @register.filter
@@ -58,3 +74,9 @@ def history_data(sources):
         if source.get("source") == "Frühere eigene Analysen" and source.get("ok"):
             return source["data"]
     return None
+
+
+@register.filter
+def alphabetical_sources(sources):
+    """Nur die Darstellung sortieren; die gespeicherte zeitliche Quellreihenfolge bleibt erhalten."""
+    return sorted(sources or [], key=lambda source: str(source.get("source", "")).casefold())

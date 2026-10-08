@@ -1,8 +1,9 @@
 {% extends "base.html" %}
-{% block title %}Gesperrt · Who Are You{% endblock %}
+{% load ui_tags %}
+{% block title %}{% ui 'Gesperrt' 'Locked' %} · Who Are You{% endblock %}
 {% block content %}
 <div class="card login">
-  <h1>Zu viele Fehlversuche</h1>
-  <p>Die Anmeldung ist von dieser Adresse aus für eine Stunde gesperrt.</p>
+  <h1>{% ui 'Zu viele Fehlversuche' 'Too many failed attempts' %}</h1>
+  <p>{% ui 'Die Anmeldung ist von dieser Adresse aus für eine Stunde gesperrt.' 'Sign-in from this address is locked for one hour.' %}</p>
 </div>
 {% endblock %}

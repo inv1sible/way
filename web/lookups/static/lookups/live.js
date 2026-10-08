@@ -39,6 +39,9 @@
     if (data.unchanged) return;
     for (const [name, fragment] of Object.entries(data.fragments)) setFragment(name, fragment);
     data.sources.forEach(setSource);
+    [...sources.children]
+      .sort((left, right) => left.dataset.key.localeCompare(right.dataset.key, undefined, { sensitivity: "base" }))
+      .forEach((source) => sources.appendChild(source));
     sourcesHeading.hidden = data.sources.length === 0;
   };
 

@@ -32,10 +32,15 @@ from pathlib import Path
 
 TOKEN = os.environ.get("TOOLS_TOKEN", "")
 MAX_OUTPUT = 200_000
+MAX_HTTP_BODY = 65_536
 SLOTS = threading.BoundedSemaphore(6)  # gleichzeitige Tool-Aufrufe
 TLS_PORTS = {443, 8443}
 WEB_PORTS = {80, 443, 8080, 8443}
 HTTPS_PORTS = {443, 8443}
+FRITZ_DEFAULT_PORTS = (443, 8443)
+SPEEDPORT_DEFAULT_PORTS = (80, 443)
+FRITZ_MAX_PORTS = 4
+FRITZ_DEFAULT_TIMEOUT = 8
 USER_AGENT = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0 Safari/537.36"
 HOSTNAME = re.compile(r"(?=.{4,253}$)([a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z][a-z0-9-]{1,62}")
 
@@ -89,6 +94,36 @@ def port_of(params, allowed, default):
     if port not in allowed:
         raise Refused(f"Port {port} ist nicht erlaubt (erlaubt: {sorted(allowed)}).")
     return port
+
+
+def fritz_ports(params, default=FRITZ_DEFAULT_PORTS):
+    """Kleine explizite Portliste; 80/8080 sind HTTP, alle anderen Ports HTTPS."""
+    values = params.get("ports", default)
+    if not isinstance(values, (list, tuple)) or not values or len(values) > FRITZ_MAX_PORTS:
+        raise Refused(f"Es sind 1 bis {FRITZ_MAX_PORTS} Ports erlaubt.")
+    ports = []
+    for value in values:
+        if isinstance(value, bool):
+            raise Refused("Ungültiger Port.")
+        try:
+            port = int(value)
+        except (TypeError, ValueError):
+            raise Refused("Ungültiger Port.") from None
+        if not 1 <= port <= 65535:
+            raise Refused(f"Port {port} liegt außerhalb von 1 bis 65535.")
+        if port not in ports:
+            ports.append(port)
+    return ports
+
+
+def fritz_timeout(params):
+    try:
+        timeout = int(params.get("timeout", FRITZ_DEFAULT_TIMEOUT))
+    except (TypeError, ValueError):
+        raise Refused("Ungültiger Timeout.") from None
+    if not 2 <= timeout <= 20:
+        raise Refused("Der Timeout muss zwischen 2 und 20 Sekunden liegen.")
+    return timeout
 
 
 # --- Prozesse --------------------------------------------------------------------------------
@@ -275,25 +310,32 @@ def describe_cert(pem):
     return result
 
 
-def tool_tls(params):
-    addr = public_ip(params.get("ip", ""))
-    port = port_of(params, TLS_PORTS, 443)
-    sni = hostname(params["sni"]) if params.get("sni") else None
+def probe_tls(addr, port, sni=None, timeout=12):
     endpoint = f"[{addr}]:{port}" if addr.version == 6 else f"{addr}:{port}"
-    cmd = ["openssl", "s_client", "-connect", endpoint, "-showcerts"] + (["-servername", sni] if sni else [])
-    out, err, _ = run(cmd, 12)
+    identity = ["-servername", sni, "-verify_hostname", sni] if sni else ["-verify_ip", str(addr)]
+    cmd = ["openssl", "s_client", "-connect", endpoint, "-showcerts", *identity]
+    out, err, _ = run(cmd, timeout)
     certs = PEM.findall(out)
     if not certs:
         raise RuntimeError("Kein TLS-Handshake möglich (Port geschlossen, gefiltert oder kein TLS)")
     protocol = re.search(r"New, (\S+), Cipher is (\S+)", out)
+    verify = re.search(r"Verify return code:\s*(\d+)", out + "\n" + err)
     return {
         "port": port,
         "sni": sni,
         "protokoll": protocol.group(1) if protocol else None,
         "cipher": protocol.group(2) if protocol else None,
+        "vertrauenswuerdig": int(verify.group(1)) == 0 if verify else None,
         "zertifikate_in_kette": len(certs),
         **describe_cert(certs[0]),
     }
+
+
+def tool_tls(params):
+    addr = public_ip(params.get("ip", ""))
+    port = port_of(params, TLS_PORTS, 443)
+    sni = hostname(params["sni"]) if params.get("sni") else None
+    return probe_tls(addr, port, sni)
 
 
 # --- Web-Kopfzeilen (Stufe 1) ----------------------------------------------------------------
@@ -352,6 +394,351 @@ def tool_web(params):
         "cookie_namen": cookies[:10],
         "alle_header_namen": sorted(headers)[:40],
     }
+
+
+# --- FRITZ!Box-Fingerprint (Stufe 1, defensiv) -------------------------------------------------
+
+BOXINFO_FIELDS = {
+    "name": "name",
+    "hw": "hardwareId",
+    "version": "rawFirmwareVersion",
+    "revision": "revision",
+    "oem": "oem",
+    "lang": "language",
+    "annex": "annex",
+    "lab": "labBuild",
+}
+FRITZ_MARKER = re.compile(r"\b(?:avm|fritz!?box|fritz!os|myfritz)\b", re.I)
+# Allgemeine Produktwörter sind nur ein vorsichtiges Indiz. Sie reichen weder
+# für eine Hersteller- noch für eine Modellzuordnung und lösen keine weiteren Abrufe aus.
+ROUTER_MARKER = re.compile(r"\b(?:router|gateway|modem|speedport|home\s*network)\b", re.I)
+SPEEDPORT_MARKER = re.compile(r"\bspeedport(?:\b|_)", re.I)
+SPEEDPORT_MODEL_FIELDS = ("device_name", "model_name", "domain_name", "device_model", "model")
+SPEEDPORT_FIRMWARE_FIELDS = ("firmware_version", "firmwareversion", "software_version", "softwareversion")
+
+
+def _status_value(data, names, depth=0):
+    """Nur explizit erlaubte, kleine Statusfelder aus JSON übernehmen; nie die Antwort selbst speichern."""
+    if depth > 5:
+        return None
+    if isinstance(data, dict):
+        for key, value in data.items():
+            normalized = str(key).casefold().replace("-", "_")
+            if normalized in names and isinstance(value, (str, int, float)) and not isinstance(value, bool):
+                text = " ".join(str(value).split())[:150]
+                if text:
+                    return text
+        for value in data.values():
+            found = _status_value(value, names, depth + 1)
+            if found:
+                return found
+    elif isinstance(data, list):
+        for value in data[:100]:
+            found = _status_value(value, names, depth + 1)
+            if found:
+                return found
+    return None
+
+
+def parse_speedport_status(data):
+    """Verarbeitet nur den unauthentifizierten, optionalen Speedport-Statuspfad.
+
+    Die Antwort kann je Firmware verschieden aussehen. Das Profil wertet daher ausschließlich bekannte
+    Modell- und Firmware-Feldnamen aus und verwirft alle anderen (potenziell privaten) Statusdaten.
+    """
+    if not isinstance(data, (bytes, bytearray)):
+        data = str(data).encode("utf-8", "replace")
+    if len(data) > MAX_HTTP_BODY:
+        raise ValueError("Speedport-Statusantwort ist zu groß")
+    try:
+        parsed = json.loads(bytes(data).decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        raise ValueError("Antwort ist kein gültiges Speedport-Status-JSON") from None
+    model_raw = _status_value(parsed, SPEEDPORT_MODEL_FIELDS)
+    model = model_raw.replace("_", " ") if model_raw and SPEEDPORT_MARKER.search(model_raw) else None
+    firmware = _status_value(parsed, SPEEDPORT_FIRMWARE_FIELDS)
+    return {
+        "device": {"vendor": "Telekom" if model else None, "model": model, "rawFirmwareVersion": firmware},
+        # Ein Modell allein ist ein direkter Herstellerhinweis; für Modell + Firmware ist die Zuordnung stark.
+        "plausible": bool(model),
+    }
+
+
+def derive_fritz_os(raw):
+    """AVM-Firmwareformat <Hardware>.<Major>.<Minor>; nur eindeutige Formen ableiten."""
+    value = str(raw or "").strip()
+    match = re.fullmatch(r"\d{2,4}\.0?(\d{1,2})\.(\d{2,3})(?:[-+][A-Za-z0-9._-]+)?", value)
+    if match:
+        return f"{int(match.group(1))}.{match.group(2)}"
+    if re.fullmatch(r"\d{1,2}\.\d{2}", value):
+        return value
+    return None
+
+
+def parse_boxinfo(data):
+    """Kleine, erwartete XML-Antwort parsen; DTD/Entities sind ausdrücklich verboten."""
+    if not isinstance(data, (bytes, bytearray)):
+        data = str(data).encode("utf-8", "replace")
+    if len(data) > MAX_HTTP_BODY:
+        raise ValueError("boxinfo-Antwort ist zu groß")
+    if re.search(br"<!\s*(?:DOCTYPE|ENTITY)\b", data, re.I):
+        raise ValueError("DTD- und Entity-Deklarationen sind nicht erlaubt")
+    stripped = bytes(data).lstrip()
+    if not stripped.startswith(b"<") or re.match(br"<(?:!doctype\s+html|html|head|body)\b", stripped, re.I):
+        raise ValueError("Antwort ist kein boxinfo-XML")
+    try:
+        root = ET.fromstring(data)
+    except ET.ParseError as exc:
+        raise ValueError(f"Ungültiges boxinfo-XML ({exc})") from None
+    root_name = root.tag.rsplit("}", 1)[-1].lower() if isinstance(root.tag, str) else ""
+    if root_name not in ("boxinfo", "jason_boxinfo"):
+        raise ValueError("XML-Wurzelelement ist kein BoxInfo")
+
+    values = {}
+    serial_present = False
+    for element in root.iter():
+        local = element.tag.rsplit("}", 1)[-1].lower() if isinstance(element.tag, str) else ""
+        value = " ".join((element.text or "").split())[:300]
+        if local == "serial" and value:
+            serial_present = True
+        output_name = BOXINFO_FIELDS.get(local)
+        if output_name and value and output_name not in values:
+            values[output_name] = value
+
+    name = values.pop("name", None)
+    model = name if name and re.search(r"fritz!?box", name, re.I) else None
+    raw_version = values.get("rawFirmwareVersion")
+    device = {
+        "model": model,
+        "hardwareId": values.get("hardwareId"),
+        "fritzOsVersion": derive_fritz_os(raw_version),
+        "rawFirmwareVersion": raw_version,
+        "revision": values.get("revision"),
+        "oem": values.get("oem"),
+        "language": values.get("language"),
+        "annex": values.get("annex"),
+        "labBuild": values.get("labBuild"),
+    }
+    known = sum(value is not None for value in device.values())
+    return {
+        "device": device,
+        "deviceName": name,
+        # Schwache Felder wie Sprache/OEM allein reichen nicht für einen hohen Nachweis.
+        "plausible": known >= 2 and bool(model or raw_version),
+        "serialRedacted": serial_present,
+    }
+
+
+def _curl_fetch(addr, sni, port, scheme, path, timeout):
+    """HEAD-Vorprüfung und ggf. GET ohne Redirect/DNS-Neuauflösung; Body bleibt hart begrenzt."""
+    ip_text = f"[{addr}]" if addr.version == 6 else str(addr)
+    url = f"{scheme}://{sni or ip_text}:{port}{path}"
+    def request(head=False):
+        with tempfile.TemporaryDirectory() as tmp:
+            header_file, body_file = Path(tmp, "headers"), Path(tmp, "body")
+            cmd = [
+                "curl", "-sS", "-k", "--max-time", str(timeout), "--connect-timeout", str(min(timeout, 6)),
+                "--max-filesize", str(MAX_HTTP_BODY), "--max-redirs", "0", "--proto", "=http,https",
+                "-A", USER_AGENT, "-H", "Accept: application/xml,text/xml,text/html;q=0.5,*/*;q=0.1",
+                "-D", str(header_file), "-o", str(body_file),
+            ]
+            if head:
+                cmd.append("--head")
+            if sni:
+                cmd += ["--resolve", f"{sni}:{port}:{ip_text}"]
+            _, err, code = run(cmd + [url], timeout + 3)
+            headers_text = header_file.read_text(errors="replace") if header_file.exists() else ""
+            raw = body_file.read_bytes() if body_file.exists() else b""
+        status, headers, cookies = parse_headers(headers_text)
+        if status is None:
+            raise RuntimeError("Keine HTTP-Antwort: " + (err.strip() or f"curl Exit-Code {code}")[:200])
+        return status, headers, cookies, raw, code
+
+    status, headers, cookies, _, _ = request(head=True)
+    content_type = headers.get("content-type", "").lower()
+    textual = not content_type or any(kind in content_type for kind in ("text/", "xml", "json", "xhtml"))
+    # Fehler/Redirects benötigen keinen Body. Binär deklarierte Inhalte werden gar nicht abgerufen.
+    if status >= 300 or not textual:
+        return {
+            "url": url, "status": status, "headers": headers, "cookieNames": cookies[:10], "body": b"",
+            "oversized": False, "binarySkipped": not textual,
+        }
+    status, headers, cookies, raw, code = request(head=False)
+    oversized = code == 63 or len(raw) > MAX_HTTP_BODY
+    return {
+        "url": url,
+        "status": status,
+        "headers": headers,
+        "cookieNames": cookies[:10],
+        "body": raw[:MAX_HTTP_BODY],
+        "oversized": oversized,
+        "binarySkipped": False,
+    }
+
+
+def _public_http(fetch):
+    headers = fetch["headers"]
+    body = fetch["body"]
+    content_type = headers.get("content-type", "").lower()
+    textual = not content_type or any(kind in content_type for kind in ("text/", "xml", "json", "xhtml"))
+    title = None
+    if textual and not fetch["oversized"]:
+        decoded = body.decode("utf-8", "replace")
+        match = re.search(r"<title[^>]*>(.*?)</title>", decoded, re.S | re.I)
+        title = " ".join(html.unescape(match.group(1)).split())[:200] if match else None
+    return {
+        "url": fetch["url"],
+        "status": fetch["status"],
+        "title": title,
+        "headers": {name: headers[name][:300] for name in HEADERS_OF_INTEREST if name in headers},
+        "cookieNames": fetch["cookieNames"],
+        "bodyOversized": fetch["oversized"],
+        "binaryBodySkipped": fetch.get("binarySkipped", False),
+    }
+
+
+def tool_router(params):
+    """Leichter Router-Fingerprint: generisch, FRITZ!Box oder Speedport, stets ohne Anmeldung."""
+    addr = public_ip(params.get("ip", ""))
+    sni = hostname(params["sni"]) if params.get("sni") else None
+    profile = params.get("profile", "generic")
+    if profile not in ("generic", "fritzbox", "speedport"):
+        raise Refused("Ungültiges Router-Prüfprofil.")
+    default_ports = {
+        "generic": (443,), "fritzbox": FRITZ_DEFAULT_PORTS, "speedport": SPEEDPORT_DEFAULT_PORTS,
+    }[profile]
+    ports = fritz_ports(params, default=default_ports)
+    timeout = fritz_timeout(params)
+    services, observations, warnings = [], [], []
+    boxinfo = None
+    speedport = None
+    tls_summary = {
+        "certificateSubject": None, "certificateIssuer": None, "dnsNames": [], "trusted": None,
+        "validFrom": None, "validTo": None,
+    }
+
+    for port in ports:
+        scheme = "http" if port in (80, 8080) else "https"
+        service = {"port": port, "scheme": scheme, "reachable": False, "endpoints": []}
+        if scheme == "https":
+            try:
+                cert = probe_tls(addr, port, sni, timeout)
+                # Die Zertifikats-Seriennummer ist für den Fingerprint nicht nötig und könnte mit der bewusst
+                # redigierten Geräte-Seriennummer verwechselt werden.
+                service["tls"] = {key: value for key, value in cert.items() if key != "seriennummer"}
+                if tls_summary["certificateSubject"] is None:
+                    tls_summary = {
+                        "certificateSubject": cert.get("inhaber"),
+                        "certificateIssuer": cert.get("aussteller"),
+                        "dnsNames": cert.get("alternative_namen", []),
+                        "trusted": cert.get("vertrauenswuerdig"),
+                        "validFrom": cert.get("gueltig_ab"),
+                        "validTo": cert.get("gueltig_bis"),
+                    }
+                if cert.get("vertrauenswuerdig") is False:
+                    warnings.append(f"Das TLS-Zertifikat auf Port {port} ist nicht vertrauenswürdig.")
+            except Exception as exc:
+                service["tlsError"] = str(exc)[:240]
+
+        paths = {
+            "generic": ("/",),
+            "fritzbox": ("/", "/jason_boxinfo.xml"),
+            "speedport": ("/", "/data/Status.json"),
+        }[profile]
+        for path in paths:
+            endpoint = {"path": path}
+            if path != "/" and not service["reachable"]:
+                endpoint.update({"result": "negative", "reason": "Kein HTTP-Dienst am Port festgestellt"})
+                service["endpoints"].append(endpoint)
+                continue
+            try:
+                fetched = _curl_fetch(addr, sni, port, scheme, path, timeout)
+                public = _public_http(fetched)
+                endpoint.update({key: value for key, value in public.items() if key not in ("url",)})
+                service["reachable"] = True
+                if path == "/":
+                    service.update({key: value for key, value in public.items() if key not in ("status",)})
+                    text = " ".join(filter(None, [public.get("title"), *public.get("headers", {}).values()]))
+                    marker = {
+                        "fritzbox": FRITZ_MARKER, "speedport": SPEEDPORT_MARKER, "generic": ROUTER_MARKER,
+                    }[profile]
+                    if marker.search(text):
+                        evidence = (
+                            f"FRITZ!/AVM-Merkmal in HTTP-Metadaten auf Port {port}"
+                            if profile == "fritzbox" else
+                            f"Speedport-Merkmal in HTTP-Metadaten auf Port {port}"
+                            if profile == "speedport" else
+                            f"Router-/Gateway-Merkmal in HTTP-Metadaten auf Port {port}"
+                        )
+                        observations.append({"evidence": evidence})
+                elif profile == "fritzbox" and fetched["status"] == 200 and not fetched["oversized"]:
+                    content_type = fetched["headers"].get("content-type", "").lower()
+                    if not content_type or "xml" in content_type or "text/plain" in content_type:
+                        try:
+                            parsed = parse_boxinfo(fetched["body"])
+                        except ValueError as exc:
+                            endpoint["result"] = "negative"
+                            endpoint["reason"] = str(exc)[:200]
+                        else:
+                            endpoint["result"] = "boxinfo"
+                            if parsed["plausible"]:
+                                boxinfo = parsed
+                    else:
+                        endpoint["result"] = "negative"
+                        endpoint["reason"] = "Antwort ist kein XML-Inhalt"
+                elif profile == "speedport" and fetched["status"] == 200 and not fetched["oversized"]:
+                    content_type = fetched["headers"].get("content-type", "").lower()
+                    if not content_type or "json" in content_type or "text/plain" in content_type:
+                        try:
+                            parsed = parse_speedport_status(fetched["body"])
+                        except ValueError as exc:
+                            endpoint["result"] = "negative"
+                            endpoint["reason"] = str(exc)[:200]
+                        else:
+                            endpoint["result"] = "speedport-status"
+                            if parsed["plausible"]:
+                                speedport = parsed
+                    else:
+                        endpoint["result"] = "negative"
+                        endpoint["reason"] = "Antwort ist kein JSON-Inhalt"
+                elif path != "/":
+                    endpoint["result"] = "negative"
+            except Exception as exc:
+                endpoint["result"] = "negative"
+                endpoint["reason"] = str(exc)[:240]
+            service["endpoints"].append(endpoint)
+        services.append(service)
+
+    return {
+        "resolvedAddress": str(addr),
+        "addressFamily": f"IPv{addr.version}",
+        "ports": ports,
+        "timeoutSeconds": timeout,
+        "services": services,
+        "tls": tls_summary,
+        "boxinfo": boxinfo,
+        "speedport": speedport,
+        "observations": observations,
+        "warnings": list(dict.fromkeys(warnings)),
+        "profile": profile,
+        "requestPolicy": (
+            "sequenziell; HEAD vor optionalem GET für /, höchstens zwei HTTP-Anfragen je Port; "
+            "keine Redirects oder Anmeldung"
+            if profile == "generic" else
+            "sequenziell; HEAD vor optionalem GET für / und /jason_boxinfo.xml, höchstens vier HTTP-Anfragen "
+            "je Port; keine Redirects oder Anmeldung"
+            if profile == "fritzbox" else
+            "sequenziell; HEAD vor optionalem GET für / und /data/Status.json, höchstens vier HTTP-Anfragen "
+            "je Port; keine Redirects, Anmeldung oder weitere Statuspfade"
+        ),
+    }
+
+
+def tool_fritzbox(params):
+    """Abwärtskompatibler FRITZ!Box-Adapter des generischen Router-Tools."""
+    values = dict(params)
+    values["profile"] = "fritzbox"
+    return tool_router(values)
 
 
 # --- Portscan (Stufe 2, nur eigene Systeme) --------------------------------------------------
@@ -465,7 +852,16 @@ def tool_scan(params):
     return {"ziel": str(addr), **parse_nmap(out)}
 
 
-TOOLS = {"whois": tool_whois, "asn": tool_asn, "dns": tool_dns, "tls": tool_tls, "web": tool_web, "scan": tool_scan}
+TOOLS = {
+    "whois": tool_whois,
+    "asn": tool_asn,
+    "dns": tool_dns,
+    "tls": tool_tls,
+    "web": tool_web,
+    "fritzbox": tool_fritzbox,
+    "router": tool_router,
+    "scan": tool_scan,
+}
 
 
 # --- HTTP-Schnittstelle ----------------------------------------------------------------------

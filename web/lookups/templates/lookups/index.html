@@ -1,54 +1,61 @@
 {% extends "base.html" %}
+{% load ui_tags %}
 {% block content %}
-{% if shared %}<p class="muted">Geteilt: „{{ shared|truncatechars:160 }}“</p>{% endif %}
+{% if shared %}<p class="muted">{% ui 'Geteilt' 'Shared' %}: „{{ shared|truncatechars:160 }}“</p>{% endif %}
 <form method="post" action="{% url 'lookups:index' %}" id="analyze">{% csrf_token %}
   <div class="search">
-    <input name="q" value="{{ q }}" placeholder="Rufnummer, IP-Adresse oder Hostname, z. B. 030 1234567 oder 203.0.113.7"
+    <input name="q" value="{{ q }}" placeholder="{% ui 'Rufnummer, IP-Adresse oder Hostname, z. B. 030 1234567 oder 203.0.113.7' 'Phone number, IP address or hostname, e.g. +49 30 1234567 or 203.0.113.7' %}"
            autocomplete="off" required>
   </div>
   <div class="opts">
-  <label class="opt-date">Stand (optional): Rückblick auf ein Datum
+  <label class="opt-date">{% ui 'Stand (optional): Rückblick auf ein Datum' 'Reference date (optional): historical view' %}
     <input type="date" name="asof" min="2000-01-01" max="{{ today }}">
-    <span class="muted">BGP- und Passive-DNS-Historie zum Datum, dazu der Verlauf deiner früheren Analysen</span></label>
+    <span class="muted">{% ui 'BGP- und Passive-DNS-Historie zum Datum, dazu der Verlauf deiner früheren Analysen' 'BGP and passive-DNS history for that date, plus your previous analyses' %}</span></label>
   {% if user.is_staff %}
   <label class="check opt"><input type="checkbox" name="active">
-    <span>Leise aktiv: TLS-Zertifikat und Web-Kopfzeilen direkt vom Ziel abrufen
-      <span class="muted">(ein normaler Zugriff, erscheint im Log des Ziels)</span></span></label>
+    <span>{% ui 'Leicht aktiv: Ich bestätige, dass ich das Ziel besitze oder ausdrücklich prüfen darf' 'Active-light: I confirm that I own the target or have explicit authorization to test it' %}
+      <span class="muted">({% ui 'nur eingetragene eigene Systeme; FRITZ!Box-Fingerprint ohne Login; erscheint im Log des Ziels' 'registered owned systems only; FRITZ!Box fingerprint without sign-in; appears in the target log' %})</span></span></label>
+  <label class="opt-date">{% ui 'Freigegebene Web-Ports (optional)' 'Approved web ports (optional)' %}
+    <input name="active_ports" inputmode="numeric" placeholder="443, 8443" maxlength="23">
+    <span class="muted">{% ui 'höchstens 4; 80/8080 via HTTP, alle anderen via HTTPS' 'up to 4; 80/8080 via HTTP, all others via HTTPS' %}</span></label>
+  <label class="opt-date">{% ui 'Timeout je Anfrage (optional)' 'Timeout per request (optional)' %}
+    <input name="active_timeout" type="number" min="2" max="20" placeholder="8">
+    <span class="muted">{% ui '2–20 Sekunden; Standard 8' '2–20 seconds; default 8' %}</span></label>
   <label class="check opt"><input type="checkbox" name="scan">
-    <span>Portscan (nmap, Top-1000-Ports): nur für eigene Systeme
-      <span class="muted">(<a href="{% url 'admin:lookups_ownedtarget_changelist' %}">Liste verwalten</a>)</span></span></label>
+    <span>{% ui 'Portscan (nmap, Top-1000-Ports): nur für eigene Systeme' 'Port scan (nmap, top 1,000 ports): owned systems only' %}
+      <span class="muted">(<a href="{% url 'admin:lookups_ownedtarget_changelist' %}">{% ui 'Liste verwalten' 'Manage list' %}</a>)</span></span></label>
   {% endif %}
   </div>
-  <button class="submit">Analysieren</button>
+  <button class="submit">{% ui 'Analysieren' 'Analyze' %}</button>
 </form>
 {% if error %}<p class="error">{{ error }}</p>{% endif %}
 
 <form method="post" action="{% url 'lookups:delete' %}" id="history" class="history">{% csrf_token %}
 <div class="history-head">
-  <h2>Verlauf{% if total %} <span class="count">({{ total }})</span>{% endif %}</h2>
+  <h2>{% ui 'Verlauf' 'History' %}{% if total %} <span class="count">({{ total }})</span>{% endif %}</h2>
   {% if lookups %}
   <div class="pick-bar">
-    <button type="button" class="secondary small" data-pick-start>Auswählen</button>
+    <button type="button" class="secondary small" data-pick-start>{% ui 'Auswählen' 'Select' %}</button>
     <span class="muted" data-pick-count></span>
-    <button class="danger small" data-pick-delete disabled>Löschen</button>
-    <button type="button" class="secondary small" data-pick-cancel>Abbrechen</button>
+    <button class="danger small" data-pick-delete disabled>{% ui 'Löschen' 'Delete' %}</button>
+    <button type="button" class="secondary small" data-pick-cancel>{% ui 'Abbrechen' 'Cancel' %}</button>
   </div>
   {% endif %}
 </div>
 {% if lookups %}
-<p class="muted pick-hint">Lange auf eine Analyse drücken, um sie auszuwählen.</p>
+<p class="muted pick-hint">{% ui 'Lange auf eine Analyse drücken, um sie auszuwählen.' 'Press and hold an analysis to select it.' %}</p>
 <div class="table-wrap">
 <table class="tiles">
-  <thead><tr><th class="t-pick"></th><th>Abfrage</th><th>Typ</th><th>Status</th><th>Zeit</th>{% if user.is_staff %}<th>Nutzer</th>{% endif %}</tr></thead>
+  <thead><tr><th class="t-pick"></th><th>{% ui 'Abfrage' 'Query' %}</th><th>{% ui 'Typ' 'Type' %}</th><th>Status</th><th>{% ui 'Zeit' 'Time' %}</th>{% if user.is_staff %}<th>{% ui 'Nutzer' 'User' %}</th>{% endif %}</tr></thead>
   <tbody>
   {% for l in lookups %}
     <tr class="tile-risk-{{ l.risk|default:'none' }}" data-pick-row>
-      <td class="t-pick"><input type="checkbox" name="ids" value="{{ l.runs|join:',' }}" aria-label="{{ l.query }} auswählen"
-          {% if l.is_running %}disabled title="Läuft noch, kann erst danach gelöscht werden"{% endif %}></td>
+      <td class="t-pick"><input type="checkbox" name="ids" value="{{ l.runs|join:',' }}" aria-label="{{ l.query }} {% ui 'auswählen' 'select' %}"
+          {% if l.is_running %}disabled title="{% ui 'Läuft noch, kann erst danach gelöscht werden' 'Still running; it can be deleted after completion' %}"{% endif %}></td>
       <td class="t-query"><a href="{% url 'lookups:detail' l.pk %}">{{ l.query }}</a>{% if l.note %} <span class="t-note">({{ l.note }})</span>{% endif %}</td>
-      <td class="t-kind">{{ l.get_kind_display }}</td>
-      <td class="t-status">{% if l.is_running %}<span class="spinner"></span> {% endif %}{{ l.get_status_display }}{% if l.risk %} · <span class="risk risk-{{ l.risk }}">Risiko {{ l.risk }}</span>{% endif %}</td>
-      <td class="t-time muted">{{ l.created_at|date:"d.m.Y H:i" }}{% if l.runs|length > 1 %} <span class="t-runs" title="{{ l.runs|length }} Analysen dieser Abfrage; frühere im Verlauf auf der Detailseite">{{ l.runs|length }}×</span>{% endif %}</td>
+      <td class="t-kind">{{ l.kind|kind_label }}</td>
+      <td class="t-status">{% if l.is_running %}<span class="spinner"></span> {% endif %}{{ l.status|status_label }}{% if l.risk %} · <span class="risk risk-{{ l.risk }}">{% ui 'Risiko' 'Risk' %} {{ l.risk|risk_label }}</span>{% endif %}</td>
+      <td class="t-time muted">{{ l.created_at|ui_datetime }}{% if l.runs|length > 1 %} <span class="t-runs" title="{{ l.runs|length }} {% ui 'Analysen dieser Abfrage; frühere im Verlauf auf der Detailseite' 'analyses of this query; earlier runs are on the detail page' %}">{{ l.runs|length }}×</span>{% endif %}</td>
       {% if user.is_staff %}<td class="t-user muted">{% if l.created_by %}{{ l.created_by.email|default:l.created_by.username }}{% else %}–{% endif %}</td>{% endif %}
     </tr>
   {% endfor %}
@@ -56,7 +63,7 @@
 </table>
 </div>
 {% else %}
-<p class="muted">Noch keine Analysen.</p>
+<p class="muted">{% ui 'Noch keine Analysen.' 'No analyses yet.' %}</p>
 {% endif %}
 </form>
 {% endblock %}

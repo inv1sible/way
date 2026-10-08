@@ -1,6 +1,6 @@
-{% if history.aenderungen_seit_letzter_analyse %}
+{% load ui_tags %}{% if history.aenderungen_seit_letzter_analyse %}
   <div class="card flags">
-    <strong>Seit der vorigen Analyse ({{ history.letzte_analyse_anzeige }}) geändert</strong>
+    <strong>{% ui 'Seit der vorigen Analyse geändert' 'Changed since the previous analysis' %} ({{ history.letzte_analyse }})</strong>
     <ul>
       {% for key, change in history.aenderungen_seit_letzter_analyse.items %}
         <li><b>{{ key }}</b>: {{ change.vorher }} → {{ change.jetzt }}</li>
@@ -9,6 +9,6 @@
   </div>
 {% endif %}
 {% if history.naechste_zum_stichtag %}
-  <p class="muted">Eigene Analyse am nächsten zum Stichtag: {{ history.naechste_zum_stichtag.anzeige }}
-    ({{ history.naechste_zum_stichtag.abstand_tage }} Tage Abstand).</p>
+  <p class="muted">{% ui 'Eigene Analyse am nächsten zum Stichtag' 'Own analysis closest to the reference date' %}: {{ history.naechste_zum_stichtag.datum }}
+    ({{ history.naechste_zum_stichtag.abstand_tage }} {% ui 'Tage Abstand' 'days apart' %}).</p>
 {% endif %}

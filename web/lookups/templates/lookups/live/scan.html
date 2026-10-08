@@ -1,10 +1,10 @@
-{% if scan %}
-  <h2>Portscan: offene Ports</h2>
-  <p class="muted">{{ scan.anzahl_offen }} offen · {{ scan.gefiltert }} gefiltert · {{ scan.geschlossen }} geschlossen
+{% load ui_tags %}{% if scan %}
+  <h2>{% ui 'Portscan: offene Ports' 'Port scan: open ports' %}</h2>
+  <p class="muted">{{ scan.anzahl_offen }} {% ui 'offen' 'open' %} · {{ scan.gefiltert }} {% ui 'gefiltert' 'filtered' %} · {{ scan.geschlossen }} {% ui 'geschlossen' 'closed' %}
     · {{ scan.profil }}{% if scan.dauer_s %} · {{ scan.dauer_s|floatformat:0 }} s{% endif %}</p>
   {% if scan.auffaellig %}
   <div class="card flags">
-    <strong>Auffällig</strong>
+    <strong>{% ui 'Auffällig' 'Notable' %}</strong>
     <ul>
       {% for f in scan.auffaellig %}
         <li><span class="risk risk-{{ f.stufe }}">{{ f.stufe }}</span> <b>Port {{ f.port }}</b>: {{ f.hinweis }}</li>
@@ -15,7 +15,7 @@
   {% if scan.offen %}
   <div class="table-wrap keep">
   <table class="ports">
-    <thead><tr><th>Port</th><th>Dienst</th><th>Produkt und Version</th></tr></thead>
+    <thead><tr><th>Port</th><th>{% ui 'Dienst' 'Service' %}</th><th>{% ui 'Produkt und Version' 'Product and version' %}</th></tr></thead>
     <tbody>
     {% for p in scan.offen %}
       <tr><td>{{ p.port }}/{{ p.proto }}</td><td>{{ p.dienst|default:"–" }}{% if p.tunnel %} ({{ p.tunnel }}){% endif %}</td>

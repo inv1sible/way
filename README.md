@@ -36,6 +36,8 @@ Start angelegt, weitere Benutzer lädt man unter "Einladungen" ein.
 | [docs/betrieb.md](docs/betrieb.md) | Installation, Konfiguration (`.env`), Reverse Proxy, Ollama, Updates, Backups |
 | [docs/architektur.md](docs/architektur.md) | Dienste, Ablauf einer Analyse, Datenmodell, Live-Aktualisierung |
 | [docs/sicherheit.md](docs/sicherheit.md) | Abfragestufen, `tools`-Container, eigene Systeme, Konten, Opsec |
+| [docs/fritzbox-fingerprint.md](docs/fritzbox-fingerprint.md) | Defensive FRITZ!Box-Erkennung, Berechtigung, Zielbindung und Grenzen |
+| [docs/router-fingerprint.md](docs/router-fingerprint.md) | Eigentumsgebundene, profilierte aktive Router-Anreicherung |
 | [TODO.md](TODO.md) | Offene Punkte und Pläne |
 
 ## Tests

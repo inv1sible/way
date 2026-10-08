@@ -31,12 +31,21 @@ async def run_source(name, fn, *args):
     return result
 
 
-async def collect(kind, query, on_result=None, active=False, scan=False, scan_asns=None, as_of=None):
+async def collect(kind, query, on_result=None, active=False, active_ports=None, active_timeout=8, active_profile="fritzbox",
+                  scan=False, scan_asns=None, active_asns=None, active_dns_name=None, as_of=None):
     from . import host, ip, phone
 
     _on_result.set(on_result)
 
     collector = {"ip": ip.collect, "host": host.collect, "phone": phone.collect}[kind]
     async with httpx.AsyncClient(timeout=15, headers={"User-Agent": USER_AGENT}) as client:
-        extra = {"scan_asns": scan_asns} if kind == "host" else {}
+        extra = {}
+        if kind != "phone":
+            extra.update(active_ports=active_ports, active_timeout=active_timeout, active_profile=active_profile)
+        if kind == "ip":
+            extra["active_asns"] = active_asns
+            extra["active_dns_name"] = active_dns_name
+        if kind == "host":
+            extra["scan_asns"] = scan_asns
+            extra["active_asns"] = active_asns
         return await collector(client, query, active=active, scan=scan, as_of=as_of, **extra)

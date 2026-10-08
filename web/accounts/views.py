@@ -17,6 +17,7 @@ from django.utils.safestring import mark_safe
 from django.views.decorators.http import require_POST
 
 from .forms import InvitationForm, RegistrationForm
+from .forms import text as ui_text
 from .models import AllowedDomain, Invitation
 
 log = logging.getLogger(__name__)
@@ -72,7 +73,7 @@ def invitations(request):
 def revoke(request, pk):
     _require_staff(request)
     Invitation.objects.usable().filter(pk=pk).update(expires_at=timezone.now())
-    messages.info(request, "Einladung widerrufen.")
+    messages.info(request, ui_text("Einladung widerrufen.", "Invitation revoked."))
     return redirect("accounts:invitations")
 
 
@@ -81,8 +82,11 @@ def register(request, token):
     invitation = Invitation.from_token(token)
     if invitation is None:
         return render(request, "accounts/invalid.html", {
-            "title": "Einladung ungültig",
-            "text": "Dieser Einladungslink ist ungültig, abgelaufen oder wurde bereits verwendet.",
+            "title": ui_text("Einladung ungültig", "Invalid invitation"),
+            "text": ui_text(
+                "Dieser Einladungslink ist ungültig, abgelaufen oder wurde bereits verwendet.",
+                "This invitation link is invalid, expired, or has already been used.",
+            ),
         }, status=404)
 
     form = RegistrationForm(request.POST or None, email=invitation.email)
@@ -115,8 +119,11 @@ def confirm(request, token):
     """Aktiviert das Konto aus einer Einladung. Der Link wirkt nur einmal, damit ein später von
     einem Admin gesperrtes Konto sich nicht mit dem alten Link selbst wieder freischalten kann."""
     invalid = render(request, "accounts/invalid.html", {
-        "title": "Bestätigung fehlgeschlagen",
-        "text": "Der Bestätigungslink ist ungültig, abgelaufen oder wurde bereits verwendet.",
+        "title": ui_text("Bestätigung fehlgeschlagen", "Confirmation failed"),
+        "text": ui_text(
+            "Der Bestätigungslink ist ungültig, abgelaufen oder wurde bereits verwendet.",
+            "The confirmation link is invalid, expired, or has already been used.",
+        ),
     }, status=400)
     try:
         pk = signing.loads(token, salt=CONFIRM_SALT, max_age=settings.EMAIL_CONFIRM_DAYS * 24 * 3600)
@@ -133,5 +140,8 @@ def confirm(request, token):
         invitation.confirmed_at = timezone.now()
         invitation.save(update_fields=["confirmed_at"])
         User.objects.filter(pk=invitation.user_id).update(is_active=True)
-    messages.success(request, "E-Mail-Adresse bestätigt. Du kannst dich jetzt anmelden.")
+    messages.success(request, ui_text(
+        "E-Mail-Adresse bestätigt. Du kannst dich jetzt anmelden.",
+        "Email address confirmed. You can now sign in.",
+    ))
     return redirect("login")

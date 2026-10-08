@@ -2,12 +2,15 @@ if ("serviceWorker" in navigator) {
   navigator.serviceWorker.register("/service-worker", { scope: "/" }).catch(() => {});
 }
 
+const ENGLISH = document.documentElement.lang.toLowerCase().startsWith("en");
+const word = (german, english) => ENGLISH ? english : german;
+
 document.addEventListener("click", (event) => {
   const button = event.target.closest("[data-copy]");
   if (!button) return;
   const field = document.querySelector(button.dataset.copy);
   navigator.clipboard.writeText(field.value).then(
-    () => { button.textContent = "Kopiert"; },
+    () => { button.textContent = word("Kopiert", "Copied"); },
     () => { field.select(); }
   );
 });
@@ -17,11 +20,11 @@ document.addEventListener("click", (event) => {
 document.addEventListener("invalid", (event) => {
   const field = event.target;
   if (field.name !== "asof") return;
-  const today = new Date(field.max).toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit", year: "numeric" });
+  const today = new Date(field.max).toLocaleDateString(ENGLISH ? "en-GB" : "de-DE", { day: "2-digit", month: "2-digit", year: "numeric" });
   field.setCustomValidity(
-    field.validity.rangeOverflow ? `Der Stand kann nicht in der Zukunft liegen: bitte ${today} oder früher wählen.`
-      : field.validity.rangeUnderflow ? "Der Stand liegt zu weit zurück: frühestens 01.01.2000."
-      : "Bitte ein vollständiges Datum wählen (Tag, Monat, Jahr) oder das Feld leeren."
+    field.validity.rangeOverflow ? word(`Der Stand kann nicht in der Zukunft liegen: bitte ${today} oder früher wählen.`, `The reference date cannot be in the future: choose ${today} or earlier.`)
+      : field.validity.rangeUnderflow ? word("Der Stand liegt zu weit zurück: frühestens 01.01.2000.", "The reference date is too far in the past: earliest 2000-01-01.")
+      : word("Bitte ein vollständiges Datum wählen (Tag, Monat, Jahr) oder das Feld leeren.", "Enter a complete date or clear the field.")
   );
 }, true);
 document.addEventListener("input", (event) => {
@@ -49,7 +52,7 @@ async function copyText(text) {
 
 function flash(button, ok) {
   button.dataset.label = button.dataset.label || button.textContent;
-  button.textContent = ok ? "Kopiert ✓" : "Kopieren nicht möglich";
+  button.textContent = ok ? word("Kopiert ✓", "Copied ✓") : word("Kopieren nicht möglich", "Copy failed");
   clearTimeout(button.flashTimer);
   button.flashTimer = setTimeout(() => { button.textContent = button.dataset.label; }, 1600);
 }
@@ -64,7 +67,7 @@ document.addEventListener("click", async (event) => {
   const all = event.target.closest("[data-copy-all]");
   if (all) {
     const parts = [...document.querySelectorAll("#l-sources .src")].map((item) => {
-      const title = item.querySelector("summary").textContent.replace(/\s+Fehler\s*$/, "").trim();
+      const title = item.querySelector("summary").textContent.replace(/\s+(Fehler|Error)\s*$/, "").trim();
       const raw = item.querySelector(".raw");
       return `### ${title}\n${raw ? raw.textContent.trim() : ""}`;
     });
@@ -82,7 +85,7 @@ document.addEventListener("click", async (event) => {
 
   function refresh() {
     const count = boxes().filter((box) => box.checked).length;
-    form.querySelector("[data-pick-count]").textContent = `${count} ausgewählt`;
+    form.querySelector("[data-pick-count]").textContent = ENGLISH ? `${count} selected` : `${count} ausgewählt`;
     form.querySelector("[data-pick-delete]").disabled = count === 0;
     boxes().forEach((box) => box.closest("tr").classList.toggle("picked", box.checked));
   }
@@ -140,9 +143,10 @@ document.addEventListener("click", async (event) => {
     const chosen = boxes().filter((box) => box.checked);
     // Ein Eintrag kann mehrere Läufe derselben Abfrage umfassen (value "36,31,30")
     const runs = chosen.reduce((sum, box) => sum + box.value.split(",").length, 0);
-    const question = runs === 1 ? "Diese Analyse löschen?"
-      : chosen.length === runs ? `${runs} Analysen löschen?`
-      : `${chosen.length} Einträge mit zusammen ${runs} Analysen (alle Läufe) löschen?`;
+    const question = runs === 1 ? word("Diese Analyse löschen?", "Delete this analysis?")
+      : chosen.length === runs ? word(`${runs} Analysen löschen?`, `Delete ${runs} analyses?`)
+      : word(`${chosen.length} Einträge mit zusammen ${runs} Analysen (alle Läufe) löschen?`,
+        `Delete ${chosen.length} entries containing ${runs} analyses in total (all runs)?`);
     if (!chosen.length || !confirm(question)) event.preventDefault();
   });
 })();

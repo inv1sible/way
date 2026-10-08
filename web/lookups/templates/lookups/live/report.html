@@ -1,1 +1,3 @@
-{% load report_tags %}{% if lookup.report_md %}<article class="card report">{{ lookup.report_md|markdown }}</article>{% endif %}
+{% load report_tags ui_tags i18n %}{% get_current_language as LANGUAGE_CODE %}{% if lookup.report_md %}
+<article class="card report" lang="{{ LANGUAGE_CODE }}">{{ lookup.report_md|localized_report|markdown }}</article>
+{% endif %}

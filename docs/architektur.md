@@ -30,14 +30,16 @@ Browser ──HTTPS──> Reverse Proxy ──> web ──> db
    Jedes Ergebnis wird sofort gespeichert, damit die Seite es live zeigen kann.
 3. Aus früheren Läufen derselben Abfrage desselben Nutzers entsteht die Quelle "Frühere eigene Analysen"
    (`lookups/historie.py`).
-4. Die Rohdaten gehen, je Quelle gekürzt, an Ollama (`lookups/llm.py`). Der Bericht hat feste Abschnitte; die
-   Zeile "Risiko: …" wird ausgelesen. Feste Regeln (z. B. auffällige offene Ports) können das Risiko anheben.
+4. Die Rohdaten gehen, je Quelle gekürzt, an Ollama (`lookups/llm.py`). Der Bericht enthält gleichwertige deutsche
+   und englische Abschnitte; die Zeile "Risiko: …" wird ausgelesen. Feste Regeln (z. B. auffällige offene Ports)
+   können die Risikostufe in beiden Sprachfassungen anheben.
 5. Status: Wartet → Quellen werden abgefragt → KI schreibt den Bericht → Fertig (oder Fehler).
 
 ## Datenmodell
 
 - **`Lookup`:** Abfrage, Art, Status, Risiko, Rohdaten (`sources`, JSON-Liste mit `source`, `ok`, `data`/`error`),
-  Bericht (Markdown), Notiz, Optionen (`as_of`, `active_probe`, `port_scan`), Eigentümer.
+  Bericht (Markdown), Notiz, Optionen (`as_of`, `active_probe`, `active_ports`, `active_timeout`, `port_scan`),
+  Eigentümer.
 - **`OwnedTarget`:** eigene Systeme für den Portscan (Adresse, Netz oder Hostname mit AS-Nummer).
 - **`accounts`:** Einladungen und E-Mail-Bestätigung.
 
@@ -49,6 +51,13 @@ immer nur die Analysen desselben Eigentümers.
 Die Detailseite besteht aus Fragmenten (`templates/lookups/live/`). Während eine Analyse läuft, fragt
 `static/lookups/live.js` alle paar Sekunden `/analyse/<id>/status/` ab. Der Server antwortet nur mit Fragmenten,
 deren Hash sich geändert hat, und gar nichts rendert er, wenn sich der Zustand (`rev`) nicht geändert hat.
+
+## Berichtsoberfläche
+
+Neben dem KI-Bericht werden keine zusätzlichen Ergebnis-, Warn- oder Hinweisboxen gerendert. Technische Grenzen,
+Sicherheitsentscheidungen und Quellenbefunde bleiben als Rohdaten nachvollziehbar und werden – wenn sie für die
+Einordnung relevant sind – im KI-Bericht behandelt. Neue Quellen dürfen diese Regel nicht mit separaten Kacheln in
+Detailansicht oder PDF umgehen.
 
 ## Vergleich von Läufen
 
