@@ -151,21 +151,21 @@ document.addEventListener("click", async (event) => {
   });
 })();
 
-// Suchformular: Optionen (Stand, Admin-Schalter) eingeklappt, bis das Eingabefeld den Fokus bekommt. Sie bleiben
-// offen, solange im Formular gearbeitet wird oder eine Option gesetzt ist, damit nichts unbemerkt mitläuft.
+// Suchformular: Optionen sind nur für Netz-Ziele sinnvoll. Sie erscheinen ausschließlich, sobald die
+// Eingabe wie ein Hostname/eine IP aussieht (Punkt bzw. Doppelpunkt für IPv6). Der Fokus allein ändert
+// nichts. Für Rufnummern werden die ausgeblendeten Felder zusätzlich deaktiviert.
 (() => {
   const form = document.getElementById("analyze");
   if (!form) return;
   const query = form.querySelector('input[name="q"]');
-  const optionSet = () => [...form.querySelectorAll(".opts input")].some((input) =>
-    input.type === "checkbox" ? input.checked : input.value);
-  const toggle = (open) => form.classList.toggle("open", open || optionSet());
+  const inputs = [...form.querySelectorAll(".opts input")];
+  const isNetworkTarget = () => /[.:]/.test(query.value.trim());
+  const sync = () => {
+    const networkTarget = isNetworkTarget();
+    inputs.forEach((input) => { input.disabled = !networkTarget; });
+    form.classList.toggle("open", networkTarget);
+  };
   form.classList.add("collapsible");
-  toggle(document.activeElement === query);
-  query.addEventListener("focus", () => toggle(true));
-  // Klick außerhalb schließt; Klicks auf Beschriftungen im Formular nehmen den Fokus, sollen aber nicht schließen
-  document.addEventListener("pointerdown", (event) => { if (!form.contains(event.target)) toggle(false); });
-  form.addEventListener("focusout", (event) => {
-    if (event.relatedTarget && !form.contains(event.relatedTarget)) toggle(false);  // Tab aus dem Formular
-  });
+  sync();
+  query.addEventListener("input", () => sync());
 })();
