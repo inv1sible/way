@@ -1,69 +1,65 @@
-# Sicherheit und Opsec
+# Security and operational security
 
-## Abfragestufen
+## Request levels
 
-| Stufe | Kontakt zum Ziel | Quellen |
+| Level | Contact with target | Sources |
 |---|---|---|
-| passiv (Standard) | keiner; nur Registries, DNS und Drittdienste | RDAP, WHOIS, ASN, DNS-Einträge, Reputationsdienste |
-| leicht aktiv (nur Admins, Berechtigung bestätigt, eigenes System) | wenige normale Zugriffe, erscheinen im Log des Ziels | TLS, Web-Metadaten, generischer Router- oder defensiver FRITZ!Box-Fingerprint auf höchstens 4 Ports |
-| Portscan (nur Admins, nur eigene Systeme) | Verbindungsversuche auf 1000 Ports | nmap (`-sT`, Top-1000-TCP, leichte Diensterkennung) |
+| Passive (default) | None; registries, DNS, and third-party services only | RDAP, WHOIS, ASN, DNS records, and reputation services |
+| Active-light (administrators, confirmed authorization, owned target) | A few ordinary requests visible in target logs | TLS, web metadata, and one router fingerprint profile on at most four ports |
+| Port scan (administrators, owned targets only) | Connection attempts against 1,000 ports | Nmap TCP connect scan of the top 1,000 ports with light service detection |
 
-Auch passive Abfragen verraten den Drittdiensten, wofür man sich interessiert, und gehen von der Adresse des
-Servers aus. Für Recherchen zu fremden Zielen ist ein VPN für Worker und `tools` sinnvoll (siehe
-[TODO.md](../TODO.md)).
+Even passive requests reveal the investigated subject to third-party services and originate from the server's
+address. A VPN for the worker and `tools` is advisable before researching third-party targets; see
+[TODO.md](../TODO.md).
 
-## Eigene Systeme
+## Owned systems
 
-Portscan und jede aktive Anreicherung laufen nur für Ziele unter Admin → "Eigene Systeme": öffentliche IP, Netz bis
-/22 bzw. /56, oder ein exakter Hostname. Ein Hostname beweist nicht, wem die Adresse gehört, auf die er zeigt (CDN,
-Cloud, geänderter DNS-Eintrag). Bei Hostnamen ist deshalb die AS-Nummer des Netzes Pflicht, und gescannt wird nur,
-wenn alle aufgelösten Adressen in diesem Netz liegen. Dasselbe gilt für jede aktive Anreicherung eines Hostnamens:
-Alle A-/AAAA-Antworten müssen öffentlich sein und aktuell zu mindestens einem hinterlegten Origin-ASN passen.
-Die geprüfte Adresse wird dann fest an die Verbindung gebunden. Der Bericht hebt diese dynamische Zielbindung
-ausdrücklich als indirekten, zeitgebundenen Nachweis hervor – sie ist keine unveränderliche Geräteidentität.
-Geprüft wird beim Absenden und noch einmal im Worker.
+Port scans and active enrichment run only for entries under Admin → **Owned systems**: a public IP address, a
+network no broader than `/22` for IPv4 or `/56` for IPv6, or an exact hostname. A hostname alone does not prove who
+owns its current address because it may use a CDN, cloud service, or changed DNS record. Hostname entries therefore
+require expected origin ASNs. WAY proceeds only when every resolved address is public and currently belongs to one
+of those ASNs. The worker repeats validation immediately before access and pins the selected address to the
+connection. The report describes this as indirect, time-bound binding rather than immutable device identity.
 
-Die Detailseite kann ein eigenes System direkt aus den Rohdaten der geöffneten Analyse anlegen. Sie schlägt aktuelle
-DNS-Adressen, Provider-Kontext und ASNs nur vor; das Öffnen löst keine neue Anfrage aus und die Person mit
-Admin-Recht muss Eigentum bzw. Berechtigung bestätigen. Der Providername ist Dokumentation. Ein hinterlegter ASN ist
-bei Hostnamen Pflicht und bei IP-Einträgen optional: Ist er vorhanden, sperrt WAY eine aktive Anreicherung, sobald die
-aktuell abgefragte IP nicht mehr zu einem erwarteten ASN gehört. Auch das ist eine Sicherheitsgrenze, kein
-Eigentumsnachweis.
+Administrators can create owned-system entries from existing raw data on a detail page. WAY suggests observed DNS
+addresses, provider context, and ASNs without issuing another request. Target and ASN values remain editable, and
+saving requires explicit confirmation of ownership or authorization. Provider name is documentation. Expected ASN
+is mandatory for hostname entries and optional for IP entries; when present, it blocks active enrichment if the IP
+no longer belongs to an allowed ASN. This is a safety boundary, not proof of ownership.
 
-Für einen IP-Eintrag kann zusätzlich ein bestätigter DNS-Name gespeichert werden. Reverse DNS ist nur eine
-Vorbelegung, kein Vertrauenssignal. Vor einer aktiven Anfrage muss der Name aktuell die konkrete IP enthalten; alle
-DNS-Antworten müssen öffentlich sein. Die Verbindung bleibt auf die ursprünglich geprüfte IP beschränkt.
+An IP entry can additionally store a confirmed DNS name. Reverse DNS is only a suggested initial value and carries
+no trust. Before active access, the name must still resolve to the exact IP and every result must be public. The
+connection remains pinned to the originally validated address.
 
-## `tools`-Container
+## `tools` container
 
-- Eigenes Docker-Netz ohne Datenbank und Redis, Dateisystem schreibgeschützt, keine Capabilities,
-  `no-new-privileges`, Speicher- und Prozessgrenzen.
-- Zugriff nur mit `TOOLS_TOKEN`.
-- Lehnt alles ab, was keine öffentliche Adresse ist (LAN, Loopback, Docker-Netz, Link-Local, CGNAT).
-- Verbindet sich nur zu IP-Adressen, die der Worker bereits aufgelöst hat (kein DNS-Rebinding); Web-Abfragen nur
-  auf höchstens vier ausdrücklich gewählten Ports. Bei Hostnamen werden alle A/AAAA-Adressen geprüft und die
-  Verbindung mit `--resolve` an die validierte Ziel-IP gebunden.
-- Router- und FRITZ!Box-Abrufe folgen keinen Redirects, sind auf 64 KiB begrenzt und senden weder Zugangsdaten noch
-  Anmeldeversuche. Das generische Router-Profil ruft nur `/` ab; nur das ausdrücklich gewählte FRITZ!Box-Profil
-  fragt zusätzlich BoxInfo ab. Das Speedport-Profil fragt nur `/data/Status.json` ab und übernimmt daraus
-  ausschließlich erlaubte Modell- und Firmwarefelder. Es gibt keine Exploit-, CVE- oder Schwachstellenproben.
-  BoxInfo-XML mit DTD/Entities wird verworfen; Geräte-Seriennummern werden nie ausgegeben.
-- Portscan mit festem Profil, ein Scan zur Zeit.
+- Uses a dedicated Docker network without database or Redis access, a read-only filesystem, no Linux capabilities,
+  `no-new-privileges`, and memory and process limits.
+- Requires `TOOLS_TOKEN` for every request.
+- Rejects non-public targets, including LAN, loopback, Docker, link-local, and CGNAT ranges.
+- Connects only to IP addresses already resolved and validated by the worker, preventing DNS rebinding. Web
+  requests are limited to at most four explicitly selected ports. For hostnames, all A and AAAA records are checked
+  and `--resolve` pins the request to the selected target IP.
+- Router requests do not follow redirects, limit bodies to 64 KiB, and send neither credentials nor login attempts.
+  The generic profile requests only `/`; FRITZ!Box adds only BoxInfo; Speedport adds only `/data/Status.json` and
+  retains allowlisted model and firmware fields. There are no exploit, CVE, or vulnerability probes. BoxInfo XML
+  containing a DTD or entities is rejected, and serial numbers are never exposed.
+- Port scanning uses a fixed profile and permits one scan at a time.
 
-Der Container kennt die Liste der eigenen Systeme nicht: Wer das Token hat, kann beliebige öffentliche Ziele
-scannen. Das Token gehört deshalb nur in `.env`.
+The container itself does not know the owned-system list. Anyone holding its token could request a scan of an
+arbitrary public target, so the token must remain only in `.env`.
 
-## Konten und Anmeldung
+## Accounts and authentication
 
-- Kein offenes Registrieren: neue Konten nur per Einladung eines Admins, mit E-Mail-Bestätigung.
-- Login-Sperre nach 3 Fehlversuchen für eine Stunde, je Client-Adresse (über `TRUSTED_PROXIES` die echte Adresse
-  hinter dem Proxy).
-- Sitzungen laufen nach 14 Tagen ab; Cookies nur über HTTPS (`DJANGO_SECURE_COOKIES=1`).
+- No open registration: administrators invite new accounts, and email addresses must be confirmed.
+- Three failed attempts from one client address cause a one-hour lockout. `TRUSTED_PROXIES` allows the application
+  to identify the actual client behind a reverse proxy.
+- Sessions expire after 14 days. Cookies require HTTPS when `DJANGO_SECURE_COOKIES=1`.
 
-## Umgang mit Fremddaten
+## Handling third-party data
 
-- Texte aus Suchergebnissen und Registern gehen als Daten an die KI; der Systemprompt weist sie an, darin
-  enthaltene Anweisungen zu ignorieren.
-- Der PDF-Export lädt keine externen Ressourcen (keine Tracking-Pixel aus Fundstellen).
-- Das Teilen-Ziel der App füllt das Suchfeld nur vor und startet keine Analyse.
-- Keine Suche nach Rufnummern in Leak-Daten (Datenschutz, § 202d StGB).
+- Search and registry text is treated as data when sent to the language model. The system prompt instructs the
+  model to ignore instructions embedded in source content.
+- PDF export never loads external resources, preventing tracking pixels from cited pages.
+- The PWA share target only prefills the search field and never starts an analysis automatically.
+- WAY does not search leaked datasets for phone numbers because of privacy and German Criminal Code section 202d.

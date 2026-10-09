@@ -1,60 +1,64 @@
 # To-do
 
-Stand: 2026-10-05. Reihenfolge innerhalb der Abschnitte = Empfehlung.
+Status: 2026-10-05. Items within each section are ordered by recommendation.
 
-## VPN und Opsec (vom Nutzer als nächster Schritt vorgemerkt)
+## VPN and operational security (planned as the next step)
 
-Bisher gehen alle Abfragen von der Heim-IP aus (Drittdienste, Websuche, `tools`-Container). Das ist für
-Analysen eigener Systeme und passive Abfragen vertretbar, für fremde Ziele mit direktem Kontakt nicht.
+All requests currently originate from the home IP address, including third-party APIs, web searches, and the
+`tools` container. This is acceptable for analyses of owned systems and passive lookups, but not for direct
+contact with third-party targets.
 
-- [ ] VPN-Anbieter wählen (Empfehlung: Mullvad, Alternative IVPN; ProtonVPN-Free nur zum Ausprobieren).
-- [ ] `gluetun` einrichten: `tools`-Container und Worker durch das VPN leiten (Notaus eingebaut); Zugriff auf
-      Redis, Datenbank und Ollama im LAN per `FIREWALL_OUTBOUND_SUBNETS` erlauben.
-- [ ] DNS-Anfragen (Spamhaus, Team Cymru, Namensauflösung) mit durchs VPN leiten, sonst verraten sie die Ziele.
-- [ ] Websuche (SearXNG) getrennt testen: VPN-Adressen werden von Suchmaschinen oft schneller gesperrt.
-- [ ] Tor optional nur für Stufe 1 (TLS/Web), nicht für APIs (Exit-Nodes werden häufig geblockt).
-- [ ] Datenschutz bei Drittdiensten: lokale Datenbanken statt Abfrage (GeoLite2 statt ip-api.com, Cloud- und
-      VPN-Bereiche, FireHOL-Listen lokal).
-- [ ] Defense in depth für `tools`: Firewall-Regel (`DOCKER-USER`), die dem Netz `way_probe` den Zugriff auf das
-      LAN verbietet. Bisher verhindert das nur die Zielprüfung im Dienst selbst.
-- [ ] Logs des `tools`-Containers enthalten die abgefragten Ziele: Aufbewahrung und Rotation festlegen.
-- [ ] Regel festhalten: Stufe 1 und 2 gegen fremde Ziele erst nach Einführung des VPNs.
+- [ ] Select a VPN provider. Recommendation: Mullvad; alternative: IVPN; Proton VPN Free only for evaluation.
+- [ ] Configure `gluetun`: route the `tools` container and worker through the VPN with a kill switch, while
+      permitting access to Redis, PostgreSQL, and Ollama on the LAN through `FIREWALL_OUTBOUND_SUBNETS`.
+- [ ] Route DNS requests for Spamhaus, Team Cymru, and name resolution through the VPN as well; otherwise they
+      disclose the investigated targets.
+- [ ] Test web search through the VPN separately because search engines often throttle VPN addresses more quickly.
+- [ ] Consider Tor only for level 1 TLS/web requests, not APIs, because exit nodes are frequently blocked.
+- [ ] Improve third-party privacy by preferring local datasets: GeoLite2 instead of ip-api.com, local cloud and VPN
+      ranges, and local FireHOL lists.
+- [ ] Add defense in depth for `tools`: a `DOCKER-USER` firewall rule that prevents the `way_probe` network from
+      reaching the LAN. At present this is enforced only by target validation inside the service.
+- [ ] Define retention and rotation for `tools` logs because they contain queried targets.
+- [ ] Establish the rule that level 1 and level 2 contact with third-party targets requires the VPN first.
 
-## Vom Nutzer zu erledigen
+## User actions
 
-- [ ] SMTP-Zugangsdaten in `.env` (`EMAIL_*`); bis dahin gehen keine Einladungs-/Bestätigungsmails raus.
-- [ ] `admin`-Konto im Admin eine E-Mail-Adresse geben (sonst kein "Passwort vergessen").
-- [ ] Grafikspeicher auf 192.168.1.139 freimachen (ca. 3 GB), damit `qwen3:8b` komplett auf die GPU passt.
-- [ ] Kostenlose API-Keys in `.env`: VirusTotal, abuse.ch, CrowdSec, AbuseIPDB.
-- [ ] Censys: Gratis-Konto auf platform.censys.io, Token (`CENSYS_TOKEN`) und Organisations-ID eintragen, dann eine
-      Analyse starten und prüfen, ob die Antwort richtig ausgewertet wird (bisher nur mit Beispieldaten getestet)
-      und wie viele Credits eine Abfrage kostet (Obergrenze `CENSYS_MONTHLY_LIMIT` danach anpassen).
-- [ ] Lokaler DNS-Eintrag für die Domain auf 192.168.1.200 (sonst erscheinen alle LAN-Geräte als 192.168.1.1
-      und sperren sich gegenseitig bei Fehlanmeldungen).
-- [ ] Portscan-Befund zur eigenen Adresse prüfen (SSH, Ports 6789/8080/8443 aus dem Internet erreichbar?).
+- [ ] Add SMTP credentials to `.env` (`EMAIL_*`). Invitation and confirmation messages are not delivered until
+      then.
+- [ ] Add an email address to the `admin` account so that password reset works.
+- [ ] Free approximately 3 GB of GPU memory on `192.168.1.139` so `qwen3:8b` fits completely on the GPU.
+- [ ] Add free API keys to `.env`: VirusTotal, abuse.ch, CrowdSec, and AbuseIPDB.
+- [ ] Create a free account at platform.censys.io, set `CENSYS_TOKEN` and the organization ID, run an analysis,
+      verify the response parsing, and determine the credit cost. Censys has so far only been tested with example
+      data; adjust `CENSYS_MONTHLY_LIMIT` afterward.
+- [ ] Add a local DNS record for the public domain pointing to `192.168.1.200`. Without it, all LAN devices appear
+      as `192.168.1.1` and share the login lockout.
+- [ ] Review the port-scan findings for the owned address: are SSH and ports 6789, 8080, or 8443 internet-accessible?
 
-## Weitere Quellen
+## Additional sources
 
-- [ ] Beobachtungsliste: tägliche Schnappschüsse (Zeitplaner-Container) für ausgewählte Namen/Adressen, damit die
-      Historie nicht von manuellen Analysen abhängt (z. B. tägliche Adresswechsel einer FritzBox).
-- [ ] Stand-Datum: VirusTotal-Resolutions (mit Key), Wayback Machine (war beim Test offline), RIPEstat
-      historical-whois (lieferte für ein /24 keine Versionen).
+- [ ] Add a watch list with daily snapshots for selected names and addresses so history does not depend on manual
+      analyses, for example to record daily address changes of a FRITZ!Box.
+- [ ] Historical date: add VirusTotal resolutions when a key is available, the Wayback Machine when operational,
+      and RIPEstat historical WHOIS if it provides useful versions.
+- [ ] Level 0: passive DNS through OTX and CIRCL, RIPEstat/BGP context, Certificate Transparency through crt.sh,
+      and SANS ISC.
+- [ ] Domains and email: ransomware.live, Hudson Rock, Intelligence X, and Have I Been Pwned. Do not operate custom
+      onion crawlers or search leaked datasets for phone numbers because of privacy and German Criminal Code
+      section 202d.
+- [ ] Phone numbers: add more search engines while keeping results visible per engine, and provide a focused
+      “Who is behind this?” view that highlights name-bearing sources separately.
+- [ ] Schedule recurring checks of an owned phone number and notify the owner about new references.
 
-- [ ] Stufe 0: Passive DNS (OTX-Daten auswerten, CIRCL), RIPEstat/BGP-Kontext, Certificate Transparency (crt.sh),
-      SANS ISC.
-- [ ] Domains und E-Mail: ransomware.live, Hudson Rock (frei), Intelligence X und Have I Been Pwned (Registrierung).
-      Keine eigenen Onion-Crawler und keine Telefonnummern-Suche in Leak-Daten (Datenschutz, §202d StGB).
-- [ ] Rufnummern: weitere Suchmaschinen, Ergebnisse je Engine sichtbar halten; Ansicht "Wer steckt dahinter"
-      (Fundstellen mit Namen getrennt hervorheben).
-- [ ] Wiederkehrende Prüfung der eigenen Rufnummer (0170 1234567) mit Benachrichtigung bei neuen Fundstellen.
+## Features and operations
 
-## Funktion und Betrieb
-
-- [ ] Eigene Systeme direkt aus der Analyse-Seite eintragen (bisher nur im Admin).
-- [ ] Echter Eigentumsnachweis für Hostnamen (Challenge per DNS-TXT oder Datei) statt nur Netzprüfung per AS-Nummer.
-- [ ] Der `tools`-Container kennt die Liste der eigenen Systeme nicht; wer das Token hat, kann beliebige öffentliche
-      Ziele scannen. Optional: signierte Freigabe je Scan oder Liste im Container prüfen.
-- [ ] Portscan: Netze statt Einzeladresse, optional zusätzliche Profile (z. B. alle 65535 Ports) für eigene Systeme.
-- [ ] Zwei-Faktor-Anmeldung; zusätzlich Sperre pro Benutzername bedenken (Abwägung: Aussperren durch Fremde).
-- [ ] Backup der PostgreSQL-Daten und der `.env`.
-- [ ] Android-App nur, wenn Anrufprüfung beim Klingeln gewünscht ist (die PWA deckt Teilen bereits ab).
+- [ ] Add a cryptographic ownership challenge for hostnames through DNS TXT or a file instead of relying only on
+      origin-AS validation.
+- [ ] The `tools` container does not know the owned-system list. Anyone with its token can scan arbitrary public
+      targets. Consider signed per-scan authorization or validating a local allowlist in the container.
+- [ ] Extend port scanning to registered networks and optionally add further profiles for owned systems.
+- [ ] Add two-factor authentication and consider per-username lockouts without enabling denial-of-service lockouts.
+- [ ] Back up PostgreSQL and `.env`.
+- [ ] Build an Android app only if caller identification while the phone rings is required; the PWA already covers
+      sharing from other apps.

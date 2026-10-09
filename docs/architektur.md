@@ -1,72 +1,71 @@
-# Architektur
+# Architecture
 
-## Dienste
+## Services
 
-| Dienst | Aufgabe |
+| Service | Responsibility |
 |---|---|
-| `web` | Django (Gunicorn): Oberfläche, Login, Admin unter `/admin/`, PDF-Export |
-| `worker` | Celery: fragt die Quellen ab und lässt den Bericht schreiben |
-| `tools` | whois, dig, openssl, curl, nmap hinter einer schmalen Token-API; eigenes Netz, nur öffentliche Ziele |
+| `web` | Django with Gunicorn: interface, login, `/admin/`, and PDF export |
+| `worker` | Celery: queries sources and generates the report |
+| `tools` | `whois`, `dig`, `openssl`, `curl`, and `nmap` behind a narrow token API; isolated network and public targets only |
 | `db` | PostgreSQL |
-| `redis` | Message-Broker für Celery |
-| `searxng` | Selbst gehostete Metasuche für Rufnummern |
-| Ollama | extern (`OLLAMA_URL`), schreibt den Bericht |
+| `redis` | Celery message broker |
+| `searxng` | Self-hosted metasearch for phone numbers |
+| Ollama | External service configured through `OLLAMA_URL`; writes the report |
 
-```
-Browser ──HTTPS──> Reverse Proxy ──> web ──> db
+```text
+Browser ──HTTPS──> Reverse proxy ──> web ──> db
                                       │       ▲
                                       ▼       │
-                                    redis ──> worker ──> Quellen im Internet
+                                    redis ──> worker ──> Internet sources
                                               │  ├────> searxng
-                                              │  ├────> tools (eigenes Netz) ──> Ziel
+                                              │  ├────> tools (isolated network) ──> target
                                               │  └────> Ollama
 ```
 
-## Ablauf einer Analyse
+## Analysis flow
 
-1. `web` erkennt die Art der Eingabe (`lookups/detect.py`), legt einen `Lookup` an und startet die Celery-Aufgabe
-   nach dem Commit.
-2. Der Worker (`lookups/tasks.py`) fragt alle Quellen parallel ab (`lookups/collectors/`, asyncio mit httpx).
-   Jedes Ergebnis wird sofort gespeichert, damit die Seite es live zeigen kann.
-3. Aus früheren Läufen derselben Abfrage desselben Nutzers entsteht die Quelle "Frühere eigene Analysen"
-   (`lookups/historie.py`).
-4. Die Rohdaten gehen, je Quelle gekürzt, an Ollama (`lookups/llm.py`). Der Bericht enthält gleichwertige deutsche
-   und englische Abschnitte; die Zeile "Risiko: …" wird ausgelesen. Feste Regeln (z. B. auffällige offene Ports)
-   können die Risikostufe in beiden Sprachfassungen anheben.
-5. Status: Wartet → Quellen werden abgefragt → KI schreibt den Bericht → Fertig (oder Fehler).
+1. `web` detects the input type in `lookups/detect.py`, creates a `Lookup`, and starts the Celery task after the
+   database transaction commits.
+2. The worker in `lookups/tasks.py` queries sources concurrently through `lookups/collectors/`, asyncio, and httpx.
+   Every result is saved immediately so the detail page can display live progress.
+3. Earlier runs of the same query by the same user become the **Previous own analyses** source through
+   `lookups/history.py`.
+4. Source data is size-limited and sent to Ollama through `lookups/llm.py`. The report contains equivalent German
+   and English sections. WAY parses the `Risk: …` line, while deterministic rules such as noteworthy open ports
+   can raise the risk level in both language versions.
+5. Status progresses through waiting, querying sources, generating the AI report, and complete or failed.
 
-## Datenmodell
+## Data model
 
-- **`Lookup`:** Abfrage, Art, Status, Risiko, Rohdaten (`sources`, JSON-Liste mit `source`, `ok`, `data`/`error`),
-  Bericht (Markdown), Notiz, Optionen (`as_of`, `active_probe`, `active_ports`, `active_timeout`, `port_scan`),
-  Eigentümer.
-- **`OwnedTarget`:** eigene Systeme für den Portscan (Adresse, Netz oder Hostname mit AS-Nummer).
-- **`accounts`:** Einladungen und E-Mail-Bestätigung.
+- **`Lookup`:** query, type, status, risk, raw source data as a JSON list containing `source`, `ok`, and
+  `data`/`error`, bilingual Markdown report, note, analysis options (`as_of`, `active_probe`, `active_ports`,
+  `active_timeout`, `port_scan`), and owner.
+- **`OwnedTarget`:** addresses, networks, or hostnames and expected ASNs authorized for active checks.
+- **`accounts`:** invitations and email confirmation.
 
-Sichtbarkeit: Nutzer sehen nur ihre eigenen Analysen, Admins alle. Der Vergleich mit früheren Läufen nutzt
-immer nur die Analysen desselben Eigentümers.
+Users can see only their own analyses; administrators can see all analyses. Historical comparison always uses
+analyses belonging to the same owner.
 
-## Live-Aktualisierung
+## Live updates
 
-Die Detailseite besteht aus Fragmenten (`templates/lookups/live/`). Während eine Analyse läuft, fragt
-`static/lookups/live.js` alle paar Sekunden `/analyse/<id>/status/` ab. Der Server antwortet nur mit Fragmenten,
-deren Hash sich geändert hat, und gar nichts rendert er, wenn sich der Zustand (`rev`) nicht geändert hat.
+The detail page is composed of fragments under `templates/lookups/live/`. While an analysis is running,
+`static/lookups/live.js` polls `/analyse/<id>/status/`. The server returns only fragments whose hashes have changed
+and renders nothing when the revision marker has not changed.
 
-## Berichtsoberfläche
+## Report interface
 
-Neben dem KI-Bericht werden keine zusätzlichen Ergebnis-, Warn- oder Hinweisboxen gerendert. Technische Grenzen,
-Sicherheitsentscheidungen und Quellenbefunde bleiben als Rohdaten nachvollziehbar und werden – wenn sie für die
-Einordnung relevant sind – im KI-Bericht behandelt. Neue Quellen dürfen diese Regel nicht mit separaten Kacheln in
-Detailansicht oder PDF umgehen.
+No additional result, warning, or notice cards are rendered alongside the AI report. Technical limitations,
+security decisions, and source findings remain inspectable as raw data and are covered by the AI report when they
+matter to its assessment. New sources must not bypass this rule by adding separate cards to the detail page or PDF.
 
-## Vergleich von Läufen
+## Comparing runs
 
-`historie.facts()` zieht aus den Rohdaten messbare Merkmale: Adressen, Reverse DNS, ASN, TLS-Zertifikat, offene
-Ports, Bundesnetzagentur- und Clever-Dialer-Treffer sowie die Reputationswerte (AbuseIPDB, VirusTotal, CrowdSec,
-GreyNoise, OTX, abuse.ch, Spamhaus, Tor, Shodan- und Censys-Ports). Verglichen werden nur Merkmale, die in beiden
-Läufen vorliegen: Fehlt ein Key oder scheiterte eine Quelle, ist das keine Änderung.
+`history.facts()` extracts measurable attributes from raw data: addresses, reverse DNS, ASN, TLS certificates,
+open ports, German Federal Network Agency and Clever Dialer matches, plus reputation values from AbuseIPDB,
+VirusTotal, CrowdSec, GreyNoise, OTX, abuse.ch, Spamhaus, Tor, Shodan, and Censys. Attributes are compared only when
+both runs contain them. A missing key or failed source is not treated as a change.
 
 ## Tests
 
-`web/lookups/tests.py`, `web/accounts/tests.py` und `tools/test_app.py`. Netzwerkzugriffe sind in den Tests
-durch Attrappen ersetzt (`httpx.MockTransport`, `mock.patch`).
+Tests live in `web/lookups/tests.py`, `web/accounts/tests.py`, and `tools/test_app.py`. Network access is replaced
+with test doubles such as `httpx.MockTransport` and `mock.patch`.

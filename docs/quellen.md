@@ -1,65 +1,65 @@
-# Quellen
+# Data sources
 
-Alle Quellen laufen parallel; eine fehlgeschlagene Quelle erscheint mit Fehlermeldung in den Rohdaten und hält
-die anderen nicht auf. Quellen mit API-Key sind aktiv, sobald der Key in `.env` steht (danach
-`docker compose up -d`, damit die Container ihn übernehmen). Alle genannten Keys gibt es kostenlos.
+Sources run concurrently. A failed source appears with its error in raw data and does not stop the others. A source
+requiring an API key becomes active once the key is present in `.env`; run `docker compose up -d` afterward so the
+containers receive it. All listed services offer a free access option.
 
-## Rufnummern
+## Phone numbers
 
-| Quelle | Key | Inhalt |
+| Source | Key | Data |
 |---|---|---|
-| libphonenumber | – | Land, Ortsnetz, Typ (Mobil, Festnetz, Sonderrufnummer), ursprünglicher Netzbetreiber |
-| Bundesnetzagentur-Maßnahmenliste | – | Ob gegen die Nummer Maßnahmen verhängt wurden (Abschaltung, Rechnungslegungsverbot) |
-| Clever Dialer | – | Bewertungen und Spam-Einstufung |
-| Websuche (SearXNG) | – | Fundstellen in üblichen Schreibweisen; nur Treffer, die die Nummer wirklich enthalten |
-| Stammnummern-Erkennung | – | begrenzter Abgleich plausibler deutscher Festnetz-Stammnummern (4/5, ausnahmsweise 6 Stellen Durchwahl); abgeleitete Suchbegriffe werden nicht gespeichert und nicht hervorgehoben dargestellt; veröffentlichte Kontakt- und Impressumsnummern werden getrennt von der konkreten Durchwahl dokumentiert |
-| Spam-Portale und Telefonbücher | – | Gezielte Suche auf bekannten Bewertungsportalen |
+| libphonenumber | – | Country, area code, type such as mobile, landline, or premium rate, and original carrier |
+| German Federal Network Agency measures | – | Published measures against the number, such as disconnection or billing prohibition |
+| Clever Dialer | – | Community ratings and spam classification |
+| Web search through SearXNG | – | References using common number formats; results must actually contain the number |
+| Main-number detection | – | Limited checks of plausible German landline organization prefixes, assuming four or five extension digits and exceptionally six; derived queries are neither stored nor highlighted, and published organization numbers remain separate from the specific extension |
+| Spam directories and phone books | – | Targeted searches of known rating and directory sites |
 
-## IP-Adressen
+## IP addresses
 
-| Quelle | Key (`.env`) | Inhalt |
+| Source | Key in `.env` | Data |
 |---|---|---|
-| Reverse DNS, RDAP | – | Name zur Adresse, Netzinhaber, Abuse-Kontakt |
-| WHOIS, ASN (Team Cymru) | – | lokal über den `tools`-Container (whois, dig) |
-| ip-api.com | – | Standort, ASN, Hinweise auf Hosting/Proxy/Mobilfunk |
-| Shodan InternetDB | – | Offene Ports und bekannte Schwachstellen aus Shodans Scans |
-| GreyNoise Community | `GREYNOISE_KEY` (optional) | Ob die Adresse das Internet scannt; ohne Key mit niedrigem Limit |
-| Tor-Exit-Liste | – | Offizielle Liste des Tor-Projekts |
-| Spamhaus ZEN | – | DNS-Sperrlisten; braucht einen eigenen Resolver (öffentliche Resolver werden abgewiesen) |
-| AbuseIPDB | `ABUSEIPDB_KEY` | Missbrauchsmeldungen, Vertrauenswert, Nutzungsart (z. B. Festnetz-Provider) |
-| AlienVault OTX | `OTX_KEY` (optional) | Threat-Feeds (Pulses), in denen die Adresse vorkommt |
-| VirusTotal | `VIRUSTOTAL_KEY` | Bewertung durch rund 90 Sicherheitsdienste |
-| abuse.ch ThreatFox, URLhaus | `ABUSECH_KEY` | Malware-Infrastruktur und Schadsoftware-URLs |
-| CrowdSec CTI | `CROWDSEC_KEY` | Beobachtete Angriffe und Einstufung aus dem CrowdSec-Netz |
-| Censys | `CENSYS_TOKEN` | Dienste und Zertifikate aus Censys' Internet-Scans |
-| FRITZ!Box Fingerprint | – | Passive AVM-/FRITZ!-Indizien; optional nach Berechtigungsbestätigung wenige direkte Web-Abrufe |
-| Frühere eigene Analysen | – | Vergleich mit früheren Läufen derselben Abfrage |
+| Reverse DNS and RDAP | – | Address name, network owner, and abuse contact |
+| WHOIS and ASN through Team Cymru | – | Local `whois` and `dig` execution in the `tools` container |
+| ip-api.com | – | Location, ASN, and hosting, proxy, or mobile-network indicators |
+| Shodan InternetDB | – | Open ports and known vulnerabilities from Shodan observations |
+| GreyNoise Community | `GREYNOISE_KEY` (optional) | Whether the address scans the internet; lower limits without a key |
+| Tor exit list | – | Official Tor Project list |
+| Spamhaus ZEN | – | DNS blocklists; requires a private resolver because public resolvers are rejected |
+| AbuseIPDB | `ABUSEIPDB_KEY` | Abuse reports, confidence score, and usage type such as fixed-line ISP |
+| AlienVault OTX | `OTX_KEY` (optional) | Threat-intelligence pulses containing the address |
+| VirusTotal | `VIRUSTOTAL_KEY` | Assessments by approximately 90 security services |
+| abuse.ch ThreatFox and URLhaus | `ABUSECH_KEY` | Malware infrastructure and malicious URLs |
+| CrowdSec CTI | `CROWDSEC_KEY` | Observed attacks and CrowdSec network classification |
+| Censys | `CENSYS_TOKEN` | Services and certificates from Censys internet observations |
+| FRITZ!Box Fingerprint | – | Passive AVM/FRITZ! indicators and, after authorization, a few direct web requests |
+| Previous own analyses | – | Comparison with earlier runs of the same query |
 
-Mit Datum ("Stand") zusätzlich: BGP-Historie (RIPEstat) und Passive DNS (AlienVault OTX).
+Selecting a reference date additionally adds BGP history from RIPEstat and passive DNS from AlienVault OTX.
 
-## Hostnamen
+## Hostnames
 
-Erst DNS-Auflösung, DNS-Einträge (dig) und Domain-WHOIS, Reputation des Namens (OTX, VirusTotal, ThreatFox,
-URLhaus), dann alle IP-Quellen für die aufgelöste Adresse. Mit "leise aktiv" zusätzlich TLS-Zertifikat und
-Web-Kopfzeilen (Ports 80 und 443), mit "Portscan" nmap.
+WAY resolves DNS, retrieves DNS records and domain WHOIS, checks hostname reputation through OTX, VirusTotal,
+ThreatFox, and URLhaus, and then runs the IP sources for the selected resolved address. Active-light can add TLS,
+web metadata, and the selected router profile. Port scan can add Nmap for an authorized owned target.
 
-## API-Keys besorgen
+## Obtaining API keys
 
-| Dienst | Registrierung | Hinweise |
+| Service | Registration | Notes |
 |---|---|---|
-| VirusTotal | <https://www.virustotal.com/gui/join-us> | Key im Profil unter "API Key"; 4 Abfragen/Minute, 500/Tag |
-| abuse.ch | <https://auth.abuse.ch/> | Ein Key für ThreatFox und URLhaus |
-| CrowdSec | <https://app.crowdsec.net/> | CTI-API-Key anlegen |
-| AbuseIPDB | <https://www.abuseipdb.com/register> | Key unter Account → API |
-| Censys | <https://platform.censys.io/> | Personal Access Token unter Account → API. Gratis: 100 Credits/Monat; `CENSYS_ORG_ID` beim Gratis-Konto **leer lassen** (sonst die UUID der Organisation, nicht ihr Name). `CENSYS_MONTHLY_LIMIT` begrenzt die Abfragen. |
-| AlienVault OTX | <https://otx.alienvault.com/> | Optional, höhere Limits |
-| GreyNoise | <https://viz.greynoise.io/signup> | Optional, höhere Limits |
+| VirusTotal | <https://www.virustotal.com/gui/join-us> | Available under **API Key** in the profile; free limits include 4 requests/minute and 500/day |
+| abuse.ch | <https://auth.abuse.ch/> | One key covers ThreatFox and URLhaus |
+| CrowdSec | <https://app.crowdsec.net/> | Create a CTI API key |
+| AbuseIPDB | <https://www.abuseipdb.com/register> | Available under Account → API |
+| Censys | <https://platform.censys.io/> | Create a personal access token under Account → API. The free plan includes 100 credits/month. Leave `CENSYS_ORG_ID` empty for an individual free account; otherwise use the organization UUID, not its name. `CENSYS_MONTHLY_LIMIT` caps calls. |
+| AlienVault OTX | <https://otx.alienvault.com/> | Optional key for higher limits |
+| GreyNoise | <https://viz.greynoise.io/signup> | Optional key for higher limits |
 
-## Bekannte Eigenheiten
+## Known behavior
 
-- **AlienVault OTX** beendet Antworten bei Komprimierung oder Keep-Alive nicht sauber; die Abfragen laufen deshalb
-  unkomprimiert mit `Connection: close` und einem zweiten Versuch.
-- **ip-api.com** stuft manche dynamischen Endkunden-Adressen als "hosting" ein; AbuseIPDBs Nutzungsart ist hier
-  verlässlicher.
-- **Spamhaus PBL** ("Endkunden-Adressbereich laut Provider") ist kein Missbrauchsnachweis, sondern normal für
-  private Anschlüsse.
+- **AlienVault OTX** sometimes fails to terminate compressed or keep-alive responses correctly. WAY therefore
+  requests uncompressed responses with `Connection: close` and permits one retry.
+- **ip-api.com** classifies some dynamic residential addresses as hosting. AbuseIPDB's usage type can be more useful
+  for this distinction.
+- **Spamhaus PBL** means that the provider identifies the range as an end-user address pool. It is normal for
+  residential connections and is not evidence of abuse.

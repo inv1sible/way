@@ -1,32 +1,33 @@
 # Router Fingerprint
 
-Die Detailseite kann eine abgeschlossene passive Analyse gezielt anreichern. Das Plus-Symbol erscheint nur für
-Admins und nur dann, wenn die untersuchte IP oder der Hostname unter **Admin → Eigene Systeme** eingetragen ist.
-Vor dem Start muss die Berechtigung noch einmal ausdrücklich bestätigt werden. Jeder aktive Lauf wird separat
-gespeichert und lässt sich dadurch klar vom passiven Ausgangslauf unterscheiden.
+The detail page can enrich a completed passive analysis with a narrowly selected active profile. The plus icon is
+available only to administrators and only when the IP address or hostname is registered under **Owned systems**.
+Authorization must be confirmed again before starting. Every active run is stored separately and linked to its
+passive parent.
 
-## Profile
+## Profiles
 
-- **Generischer Router:** Pro explizit freigegebenem Port (Vorgabe: `443`) wird sequenziell ein TLS-Handshake sowie
-  eine HEAD- und, bei Textinhalt, eine GET-Anfrage für `/` ausgeführt. Ausgewertet werden nur Status, ausgewählte
-  Header und Seitentitel. Allgemeine Begriffe wie „Router“, „Gateway“, „Modem“ oder „Speedport“ sind lediglich ein
-  vorsichtiges Indiz; WAY nennt daraus keinen Hersteller, kein Modell und keine Firmwareversion.
-- **FRITZ!Box:** Verwendet dasselbe geringe Web-Budget und fragt zusätzlich, nur ohne Anmeldung,
-  `/jason_boxinfo.xml` ab. Details und Grenzen stehen im [FRITZ!Box Fingerprint](fritzbox-fingerprint.md).
-- **Speedport (experimentell):** Prüft zusätzlich ausschließlich `/data/Status.json`. Aus der Antwort werden nur
-  ausdrücklich erlaubte Modell- und Firmware-Felder übernommen; alle übrigen Statusdaten werden verworfen. Das
-  Profil versucht keine Anmeldung, Challenge-Response-Logik, TR-064- oder weitere Statuspfade. Der Pfad ist je
-  Modell, Firmware und WAN-Konfiguration optional und häufig nur aus dem LAN erreichbar.
+- **Generic router:** for each explicitly approved port, defaulting to `443`, WAY sequentially performs a TLS
+  handshake plus HEAD and, for textual content, GET for `/`. It evaluates only status, selected headers, and title.
+  Generic words such as “router”, “gateway”, “modem”, or “Speedport” are weak indicators and never justify inventing
+  a vendor, model, or firmware version.
+- **FRITZ!Box:** uses the same small web budget and additionally requests only `/jason_boxinfo.xml` without
+  authentication. See [FRITZ!Box Fingerprint](fritzbox-fingerprint.md).
+- **Speedport (experimental):** additionally requests only `/data/Status.json`. WAY retains only explicitly allowed
+  model and firmware fields and discards all other status data. It does not attempt login, challenge-response,
+  TR-064, or further status endpoints. Availability depends on model, firmware, and WAN configuration, and the
+  endpoint is commonly restricted to the LAN.
 
-Höchstens vier Ports und ein Timeout von 2 bis 20 Sekunden sind zulässig. Redirects sind deaktiviert; bei einem
-Hostnamen bindet WAY SNI und HTTP-Host an die bereits geprüfte IP-Adresse. Die Ablaufpolitik wird als
-`requestPolicy` in den Rohdaten sichtbar.
+At most four ports and a timeout of 2–20 seconds are accepted. Redirects are disabled. For a hostname, WAY pins TLS
+SNI and HTTP Host to the previously validated IP address. Raw data records the execution rules in `requestPolicy`.
 
-## Was bewusst nicht geschieht
+## Deliberate exclusions
 
-Es gibt keine Login-Versuche, Zugangsdaten, Brute Force, automatische Portsuche, SOAP-Aktionen, Exploits,
-CVE-/Schwachstellenproben oder automatische Folgeanfragen an andere Hosts. Eine aktive Prüfung erzeugt wenige
-normale Webzugriffe und kann deshalb im Zielprotokoll sichtbar sein. Für fremde Systeme bleibt die Analyse passiv.
+WAY performs no login attempts, credential submission, brute force, automatic port discovery, SOAP action,
+exploit, CVE probe, or vulnerability test. It never automatically follows a response to another host. An active
+check creates a few ordinary web requests and can therefore appear in target logs. Third-party systems remain
+passive-only.
 
-Ein offener Webport kann auf ein weitergeleitetes internes Gerät zeigen; bei IPv6 kann die Adresse selbst ein
-internes Gerät sein. Ohne von außen erreichbaren Dienst ist eine Firmwareversion normalerweise nicht feststellbar.
+An open web port may be forwarded to another internal device. With IPv6, the investigated address itself may
+belong to an internal device rather than the router. Without an externally reachable service, the firmware version
+normally cannot be determined.

@@ -1,44 +1,45 @@
 # Who Are You (WAY)
 
-Selbst gehostetes OSINT-Werkzeug: Rufnummer, IP-Adresse oder Hostnamen eingeben und einen Bericht mit
-Risikoeinschätzung erhalten. Die Daten kommen ohne KI aus freien Quellen (Registries, DNS, Reputationsdienste,
-Websuche); ein lokales Sprachmodell über [Ollama](https://ollama.com) fasst sie zusammen. Nichts verlässt den
-eigenen Server außer den Abfragen an die Quellen selbst.
+A self-hosted OSINT tool: enter a phone number, IP address, or hostname and receive a report with a risk
+assessment. Data is collected without AI from free sources such as registries, DNS, reputation services, and web
+search. A local language model provided through [Ollama](https://ollama.com) summarizes the findings. Nothing leaves
+your own server except the requests sent to those sources.
 
-- **Rufnummern:** Land, Ortsnetz, Netzbetreiber, Maßnahmenliste der Bundesnetzagentur, Bewertungen und Fundstellen
-  im Netz (über eine selbst gehostete SearXNG-Suche).
-- **IP-Adressen und Hostnamen:** Netzinhaber, Standort, DNS, Reputation (VirusTotal, AbuseIPDB, CrowdSec,
-  GreyNoise, AlienVault OTX, abuse.ch, Spamhaus), Internet-Scan-Daten (Shodan, Censys); optional TLS-Zertifikat,
-  Web-Kopfzeilen und Portscan eigener Systeme.
-- **Verlauf:** Wiederholte Analysen derselben Abfrage werden gruppiert und verglichen (geänderte Adressen, Ports,
-  Reputation, Risiko). Optional ein Rückblick auf ein Datum (BGP- und Passive-DNS-Historie).
-- **Oberfläche:** Deutsch, mobil als installierbare Web-App (PWA) mit Teilen-Ziel, Live-Fortschritt, PDF-Export,
-  Notizen, Mehrbenutzer mit Einladungen.
+- **Phone numbers:** country, area code, carrier, measures published by the German Federal Network Agency,
+  community ratings, and web references through a self-hosted SearXNG instance.
+- **IP addresses and hostnames:** network owner, location, DNS, reputation data from VirusTotal, AbuseIPDB,
+  CrowdSec, GreyNoise, AlienVault OTX, abuse.ch, and Spamhaus, plus internet scan data from Shodan and Censys.
+  TLS certificates, web headers, and port scans are optionally available for registered owned systems.
+- **History:** repeated analyses of the same query are grouped and compared for changed addresses, ports,
+  reputation, and risk. A historical date can optionally add BGP and passive-DNS history.
+- **Interface:** German and English, installable as a mobile PWA with a share target, live progress, PDF export,
+  notes, and invitation-based multi-user support.
 
-## Schnellstart
+## Quick start
 
-Voraussetzungen: Docker mit Compose und ein erreichbarer Ollama-Server mit einem Modell (getestet mit `qwen3:8b`).
+Requirements: Docker with Compose and an accessible Ollama server with a model. WAY has been tested with
+`qwen3:8b`.
 
 ```sh
-cp .env.example .env    # Secrets, Passwörter, OLLAMA_URL setzen; API-Keys optional
+cp .env.example .env    # Configure secrets, passwords, and OLLAMA_URL; API keys are optional
 docker compose up -d --build
 ```
 
-Die Web-UI läuft unter `http://<host>:${APP_PORT}`. Der Benutzer aus `DJANGO_SUPERUSER_*` wird beim ersten
-Start angelegt, weitere Benutzer lädt man unter "Einladungen" ein.
+The web interface is available at `http://<host>:${APP_PORT}`. The account configured through
+`DJANGO_SUPERUSER_*` is created on first startup. Additional users can be invited from **Invitations**.
 
-## Dokumentation
+## Documentation
 
-| Dokument | Inhalt |
+| Document | Contents |
 |---|---|
-| [docs/bedienung.md](docs/bedienung.md) | Suche, Optionen, Verlauf, Detailseite, Notizen, Teilen auf dem Handy |
-| [docs/quellen.md](docs/quellen.md) | Alle Datenquellen, welche einen API-Key brauchen und wo es ihn gibt |
-| [docs/betrieb.md](docs/betrieb.md) | Installation, Konfiguration (`.env`), Reverse Proxy, Ollama, Updates, Backups |
-| [docs/architektur.md](docs/architektur.md) | Dienste, Ablauf einer Analyse, Datenmodell, Live-Aktualisierung |
-| [docs/sicherheit.md](docs/sicherheit.md) | Abfragestufen, `tools`-Container, eigene Systeme, Konten, Opsec |
-| [docs/fritzbox-fingerprint.md](docs/fritzbox-fingerprint.md) | Defensive FRITZ!Box-Erkennung, Berechtigung, Zielbindung und Grenzen |
-| [docs/router-fingerprint.md](docs/router-fingerprint.md) | Eigentumsgebundene, profilierte aktive Router-Anreicherung |
-| [TODO.md](TODO.md) | Offene Punkte und Pläne |
+| [docs/bedienung.md](docs/bedienung.md) | Search, options, history, detail page, notes, and mobile sharing |
+| [docs/quellen.md](docs/quellen.md) | Data sources, required API keys, and registration links |
+| [docs/betrieb.md](docs/betrieb.md) | Installation, `.env` configuration, reverse proxy, Ollama, updates, and backups |
+| [docs/architektur.md](docs/architektur.md) | Services, analysis flow, data model, and live updates |
+| [docs/sicherheit.md](docs/sicherheit.md) | Request levels, the `tools` container, owned systems, accounts, and operational security |
+| [docs/fritzbox-fingerprint.md](docs/fritzbox-fingerprint.md) | Defensive FRITZ!Box detection, authorization, target binding, and limitations |
+| [docs/router-fingerprint.md](docs/router-fingerprint.md) | Ownership-bound, profiled active router enrichment |
+| [TODO.md](TODO.md) | Open work and plans |
 
 ## Tests
 
@@ -47,8 +48,9 @@ docker compose run --rm web python manage.py test lookups accounts
 docker compose run --rm --no-deps -e TOOLS_TOKEN=x tools python -m unittest -v
 ```
 
-## Rechtliches
+## Legal notice
 
-Gedacht für die Prüfung unbekannter Anrufer und eigener Systeme. Aktive Abfragen (TLS, Web-Kopfzeilen) und
-Portscans fremder Ziele können je nach Land unzulässig sein; der Portscan ist deshalb auf eingetragene eigene
-Systeme beschränkt. Die Nutzungsbedingungen der einzelnen Quellen gelten.
+WAY is intended for investigating unknown callers and systems you own or are explicitly authorized to test.
+Active requests such as TLS, web metadata, and port scans against third-party systems may be unlawful in some
+jurisdictions. Port scanning is therefore restricted to registered owned systems. The terms of service of every
+data provider continue to apply.

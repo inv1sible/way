@@ -1,65 +1,61 @@
 # FRITZ!Box Fingerprint
 
-WAY ergänzt IP- und Hostnamenanalysen um die strukturierte Quelle **FRITZ!Box Fingerprint**. Sie soll defensiv
-einschätzen, ob das öffentlich erreichbare Ziel wahrscheinlich eine FRITZ!Box ist. Das Ergebnis ist eine
-Momentaufnahme bzw. bei Suchmaschinen-Daten ein möglicherweise älterer Fremdbefund – kein Eigentumsnachweis und
-keine Schwachstellenprüfung.
+WAY adds the structured **FRITZ!Box Fingerprint** source to IP-address and hostname analyses. It defensively
+assesses whether a publicly reachable target is likely to be a FRITZ!Box. The result is a current observation—or,
+for search-engine data, a potentially stale third-party observation—not proof of ownership or a vulnerability test.
 
-## Verwendung und Berechtigung
+## Usage and authorization
 
-Im Normalfall genügt eine IP-Adresse oder ein Hostname im Suchfeld. Der Standardmodus ist **passiv** und kontaktiert
-das Ziel nicht. Er wertet Reverse DNS sowie die ohnehin konfigurierten Shodan-InternetDB- und Censys-Ergebnisse auf
-ausdrückliche AVM-/FRITZ!-Merkmale aus. Censys bleibt optional und benötigt den bereits vorhandenen
-`CENSYS_TOKEN`; es wurde keine neue API-Abhängigkeit eingeführt.
+Enter an IP address or hostname in the search field. The default **passive** mode does not contact the target. It
+evaluates reverse DNS and already configured Shodan InternetDB and Censys results for explicit AVM or FRITZ!
+markers. Censys remains optional and uses the existing `CENSYS_TOKEN`; no mandatory API dependency was added.
 
-Nur Admins sehen **Leicht aktiv**. Zusätzlich muss das Ziel unter „Eigene Systeme“ eingetragen sein; der Schalter ist
-zugleich die ausdrückliche Bestätigung, dass das Ziel dem Nutzer gehört oder für die Prüfung freigegeben wurde.
-Optional können 1 bis 4 Ports und ein Timeout von 2 bis 20 Sekunden angegeben werden. Ohne Portangabe prüft WAY
-ausschließlich `443` und `8443`. `80` und `8080` werden als HTTP behandelt, alle anderen explizit genannten Ports
-als HTTPS. Die Einstellung wird bei „Erneut analysieren“ erhalten. Eine passiv gestartete Analyse kann nach ihrem
-Abschluss als separater, verknüpfter Folgelauf über „Mehr Erkenntnisse gewinnen“ angereichert werden.
+Only administrators can select **Active-light**. The target must also be registered under **Owned systems**, and
+the administrator must explicitly confirm ownership or authorization. Between one and four ports and a timeout of
+2–20 seconds can be configured. Without explicit ports, WAY checks only `443` and `8443`. Ports `80` and `8080`
+use HTTP; every other explicitly approved port uses HTTPS. Repeat analysis preserves these settings. A passive
+analysis can later be enriched as a separate linked run through **Gain more intelligence**.
 
-Die aktive Prüfung arbeitet pro Port streng sequenziell. Sie prüft den Inhaltstyp zunächst mit HEAD und führt nur
-für textuelle Antworten einen GET aus, insgesamt höchstens vier HTTP-Anfragen je Port:
+Active requests run strictly sequentially per port. WAY first uses HEAD to inspect content type and performs GET
+only for textual responses, with no more than four HTTP requests per port:
 
-1. `/` für HTTP-Status, ausgewählte Header und gegebenenfalls den Seitentitel,
-2. `/jason_boxinfo.xml` für öffentlich ohne Anmeldung angebotene Geräteinformationen.
+1. `/` for status, selected headers, and optionally the page title;
+2. `/jason_boxinfo.xml` for device information publicly available without authentication.
 
-Es gibt keine Anmeldung, keine Zugangsdaten, keine SOAP-Aktion, keinen Brute-Force-, Exploit- oder CVE-Test und
-keinen automatischen Portscan. Redirects werden nicht verfolgt. Der allgemeine, separat bestätigte Nmap-Portscan
-von WAY bleibt unabhängig davon und ist weiterhin nur für eingetragene eigene Systeme verfügbar. Die
-Nmap-Diensterkennung ist in der [Nmap-Dokumentation](https://nmap.org/book/man-version-detection.html) beschrieben.
+WAY performs no login, sends no credentials, invokes no SOAP action, and performs no brute-force, exploit, CVE,
+or automatic port scan. Redirects are disabled. WAY's separately authorized Nmap scan remains independent and is
+restricted to registered owned systems. Nmap service detection is documented in the
+[Nmap reference](https://nmap.org/book/man-version-detection.html).
 
-## Zielbindung und Datenschutz
+## Target binding and privacy
 
-- IP-Literale und Hostnamen werden normalisiert und streng validiert.
-- Nur öffentlich routbare Ziele sind aktiv zulässig. Loopback, private und reservierte Netze, Link-Local,
-  Multicast, CGNAT, Dokumentationsnetze und Cloud-Metadatenadressen werden abgewiesen.
-- Bei Hostnamen müssen **alle** A- und AAAA-Ergebnisse öffentlich sein. Schon eine interne Mischadresse sperrt die
-  aktive Prüfung.
-- Die geprüfte Adresse wird an den Werkzeugdienst übergeben und dort erneut validiert. `curl --resolve` bindet
-  Hostheader und TLS-SNI an genau diese Adresse; dadurch findet während der Verbindung keine zweite DNS-Auflösung
-  statt. IPv6-Literale werden in URLs korrekt geklammert.
-- TLS-Zertifikate dürfen für das Fingerprinting selbstsigniert sein. WAY kennzeichnet sie als nicht vertrauenswürdig,
-  deaktiviert die Zertifikatsprüfung aber nicht global.
-- Antwortkörper sind auf 64 KiB begrenzt. Binäre Inhalte werden nicht ausgewertet. XML mit DTD oder Entities wird
-  verworfen; die Geräteantwort wird weder roh gespeichert noch geloggt.
-- Eine in BoxInfo enthaltene Geräte-Seriennummer wird immer vollständig verworfen. WAY besitzt derzeit keinen
-  separaten sicheren Ausgabemodus für dieses sensible Detail.
+- IP literals and hostnames are normalized and strictly validated.
+- Active access accepts publicly routable targets only. Loopback, private, reserved, link-local, multicast, CGNAT,
+  documentation, and cloud-metadata addresses are rejected.
+- For hostnames, every A and AAAA result must be public. A single mixed private address blocks active access.
+- The validated address is passed to the tool service and validated again. `curl --resolve` pins the HTTP Host and
+  TLS SNI names to that exact address, preventing a second DNS lookup during the connection. IPv6 literals are
+  enclosed correctly in URL brackets.
+- Self-signed certificates can be processed for fingerprinting and are marked untrusted. TLS validation is not
+  disabled globally.
+- Response bodies are limited to 64 KiB, and binary content is not processed. XML containing a DTD or entities is
+  rejected. Raw device XML is neither stored nor logged.
+- Device serial numbers contained in BoxInfo are always discarded. WAY currently has no separate secure output
+  mode for this sensitive value.
 
-## Ergebnis und Einstufung
+## Result and confidence
 
-Die Rohdatenquelle enthält `target`, `authorization`, `classification`, `device`, `services`, `tls`,
-`observations`, `limitations`, `warnings` und eine verständliche `summary`. Fehlende Werte bleiben `null`.
-Ein negativer oder unsicherer Fingerprint wird nur dort dokumentiert und nicht im KI-Bericht hervorgehoben. Ein
-positiver Nachweis kann im zweisprachigen KI-Bericht erscheinen.
+The raw source contains `target`, `authorization`, `classification`, `device`, `services`, `tls`, `observations`,
+`limitations`, `warnings`, and a readable `summary`. Missing values remain `null`. Negative and uncertain results
+remain raw technical data and are not highlighted in the AI report. Positive evidence can appear in its German
+and English versions.
 
 ```json
 {
   "classification": {
     "likelyFritzBox": true,
     "confidence": "high",
-    "reasons": ["/jason_boxinfo.xml lieferte ein plausibles BoxInfo-Dokument; Geräteseriennummer wurde redigiert."]
+    "reasons": ["/jason_boxinfo.xml returned a plausible BoxInfo document; the device serial number was discarded."]
   },
   "device": {
     "model": "FRITZ!Box 7590 AX",
@@ -68,28 +64,28 @@ positiver Nachweis kann im zweisprachigen KI-Bericht erscheinen.
     "rawFirmwareVersion": "259.08.02-123456",
     "revision": "123456",
     "oem": "avm",
-    "language": "de",
-    "labBuild": "Labor"
+    "language": "en",
+    "labBuild": "Lab"
   }
 }
 ```
 
-`high` setzt ein plausibles, erfolgreich geparstes BoxInfo-Dokument voraus. `medium` braucht mehrere unabhängige
-Quellen, `low` bezeichnet ein einzelnes Indiz, `none` keinen belastbaren Hinweis. Modell und exakte Version werden
-nur aus direkt gelieferten Feldern übernommen. Die Rohversion bleibt unverändert; eine FRITZ!OS-Version wird nur
-aus einem eindeutigen AVM-Format abgeleitet.
+`high` requires a plausible, successfully parsed BoxInfo document. `medium` requires several independent sources,
+`low` represents one weak indicator, and `none` means that no defensible evidence was found. Model and exact
+firmware versions are copied only from directly supplied fields. The raw version is preserved, and a FRITZ!OS
+version is derived only from an unambiguous AVM format.
 
-`401`, `403`, `404`, Timeout, Login-HTML und nicht parsebares oder zu großes XML sind normale negative Ergebnisse.
-`/jason_boxinfo.xml` ist **nicht** auf jeder FRITZ!Box und nicht über jeden WAN-Zugang erreichbar. Schnittstellen und
-modellabhängige Hinweise veröffentlicht AVM unter [FRITZ!-Schnittstellen](https://fritz.com/pages/schnittstellen).
+Responses such as `401`, `403`, `404`, timeout, login HTML, malformed XML, and oversized XML are normal negative
+results. `/jason_boxinfo.xml` is not available on every FRITZ!Box or through every WAN configuration. AVM documents
+its model-dependent interfaces at [FRITZ! interfaces](https://fritz.com/pages/schnittstellen).
 
-## Grenzen
+## Limitations
 
-- Eine öffentliche IPv4 kann wegen CGNAT oder DS-Lite beim Provider enden.
-- Ein offener Port kann auf ein anderes internes Gerät weitergeleitet sein.
-- Bei IPv6 kann die untersuchte Adresse zu einem internen Gerät statt zur FRITZ!Box gehören.
-- Ohne erreichbaren WAN-Webdienst lässt sich die Firmware von außen normalerweise nicht feststellen.
-- Shodan- und Censys-Daten können veraltet sein; WAY zeigt deshalb den Beobachtungs-/Abfragezeitpunkt und den
-  entsprechenden Vorbehalt an.
+- A public IPv4 address may terminate at the provider because of CGNAT or DS-Lite.
+- An open port may be forwarded to another internal device.
+- With IPv6, the investigated address may belong to an internal device rather than the FRITZ!Box.
+- Firmware normally cannot be identified externally when no WAN service is reachable.
+- Shodan and Censys observations can be stale; WAY therefore records observation or retrieval time and the
+  corresponding limitation.
 
-Das Werkzeug ist ausschließlich für eigene oder ausdrücklich freigegebene Systeme bestimmt.
+This feature is exclusively for systems you own or are explicitly authorized to test.
