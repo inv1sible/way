@@ -241,6 +241,11 @@ def _owned_target_suggestion(lookup):
             asns.update(re.findall(r"\bAS\d+\b", str(data.get("as") or ""), flags=re.IGNORECASE))
             providers.extend(str(data.get(key)).strip() for key in ("isp", "org", "asname") if data.get(key))
             evidence.append(name)
+        if name.startswith("IPinfo.io"):
+            asns.update(re.findall(r"\bAS\d+\b", str(data.get("asn") or ""), flags=re.IGNORECASE))
+            if data.get("as_name"):
+                providers.append(str(data["as_name"]).strip())
+            evidence.append(name)
         if name.startswith("RDAP") and data.get("netzname"):
             providers.append(str(data["netzname"]).strip())
             evidence.append(name)

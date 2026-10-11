@@ -7,7 +7,7 @@ import time
 
 from django.conf import settings
 
-from . import censys, fritzbox, history, router, run_source, speedport, threatintel, tools
+from . import censys, fritzbox, history, ipinfo, router, run_source, speedport, threatintel, tools
 
 CGNAT = ipaddress.ip_network("100.64.0.0/10")
 IP_BINDING_SOURCE = "IP-Zielbindung (ASN)"
@@ -228,6 +228,8 @@ async def collect(client, ip, active=False, sni=None, active_ports=None, active_
         jobs.append(("Spamhaus ZEN", spamhaus, ip))
     if settings.OSINT_ABUSEIPDB_KEY:
         jobs.append(("AbuseIPDB", abuseipdb, client, ip))
+    if settings.OSINT_IPINFO_TOKEN:
+        jobs.append((ipinfo.SOURCE, ipinfo.lookup, client, ip))
     jobs += threatintel.jobs(client, ip, "ip")
     if settings.OSINT_CENSYS_TOKEN:
         jobs.append(("Censys (Internet-Scan-Daten)", censys.host, client, ip))

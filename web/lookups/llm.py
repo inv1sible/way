@@ -78,6 +78,8 @@ Gemeinsam genutzte Infrastruktur (Cloud, CDN, große Provider) taucht oft in Lis
 verraten Mail- und Hosting-Anbieter. "TLS-Zertifikat" und "Web-Kopfzeilen" stammen aus direktem Kontakt \
 mit dem Ziel: Zertifikatsinhaber, alternative Namen und Seitentitel sind starke Hinweise auf den Betreiber; \
 ein selbstsigniertes oder abgelaufenes Zertifikat deutet auf ein nachlässig betriebenes Gerät hin.
+- "IPinfo.io Lite" liefert Land und grundlegende ASN-Daten. Der Name der AS-Organisation bezeichnet den \
+Netzbetreiber, nicht die Person oder Organisation, die eine dynamische Adresse zu einem bestimmten Zeitpunkt nutzte.
 - Stichtag: "RIPEstat Routing-Historie" und "Passive DNS" zeigen den Stand zum Stichtag, alle anderen Quellen \
 den heutigen. Trenne beides im Bericht. Passive DNS ist lückenhaft: Fehlt ein Eintrag, heißt das nicht, \
 dass es keine Verbindung gab. Welche Person oder welcher Anschluss eine dynamische Adresse nutzte, weiß \

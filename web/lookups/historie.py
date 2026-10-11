@@ -67,6 +67,10 @@ def facts(sources):
         found["reverse_dns"] = rdns.get("ptr")
     if asn := _data(sources, "ASN"):
         found["asn"] = sorted(asn.get("asn") or [])
+    if ipinfo := _exact(sources, "IPinfo.io Lite (Country/ASN)"):
+        found["ipinfo_asn"] = ipinfo.get("asn")
+        found["ipinfo_as_name"] = ipinfo.get("as_name")
+        found["ipinfo_country"] = ipinfo.get("country_code")
     if tls := _data(sources, "TLS-Zertifikat"):
         found["zertifikat_sha256"] = tls.get("sha256")
     if scan := _data(sources, "Portscan"):

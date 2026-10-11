@@ -7,8 +7,9 @@ your own server except the requests sent to those sources.
 
 - **Phone numbers:** country, area code, carrier, measures published by the German Federal Network Agency,
   community ratings, and web references through a self-hosted SearXNG instance.
-- **IP addresses and hostnames:** network owner, location, DNS, reputation data from VirusTotal, AbuseIPDB,
-  CrowdSec, GreyNoise, AlienVault OTX, abuse.ch, and Spamhaus, plus internet scan data from Shodan and Censys.
+- **IP addresses and hostnames:** network owner, location, and ASN context from IPinfo.io, DNS, reputation data
+  from VirusTotal, AbuseIPDB, CrowdSec, GreyNoise, AlienVault OTX, abuse.ch, and Spamhaus, plus internet scan data
+  from Shodan and Censys.
   TLS certificates, web headers, and port scans are optionally available for registered owned systems.
 - **History:** repeated analyses of the same query are grouped and compared for changed addresses, ports,
   reputation, and risk. A historical date can optionally add BGP and passive-DNS history.

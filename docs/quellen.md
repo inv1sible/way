@@ -22,6 +22,7 @@ containers receive it. All listed services offer a free access option.
 | Reverse DNS and RDAP | – | Address name, network owner, and abuse contact |
 | WHOIS and ASN through Team Cymru | – | Local `whois` and `dig` execution in the `tools` container |
 | ip-api.com | – | Location, ASN, and hosting, proxy, or mobile-network indicators |
+| IPinfo.io Lite | `IPINFO_TOKEN` | Country, continent, ASN, AS organization name, and AS domain |
 | Shodan InternetDB | – | Open ports and known vulnerabilities from Shodan observations |
 | GreyNoise Community | `GREYNOISE_KEY` (optional) | Whether the address scans the internet; lower limits without a key |
 | Tor exit list | – | Official Tor Project list |
@@ -51,6 +52,7 @@ web metadata, and the selected router profile. Port scan can add Nmap for an aut
 | abuse.ch | <https://auth.abuse.ch/> | One key covers ThreatFox and URLhaus |
 | CrowdSec | <https://app.crowdsec.net/> | Create a CTI API key |
 | AbuseIPDB | <https://www.abuseipdb.com/register> | Available under Account → API |
+| IPinfo.io Lite | <https://ipinfo.io/signup> | The free Lite API requires a token and returns country-level location plus basic ASN data. WAY sends the token in an authorization header, not in the URL. IPinfo.io attribution is retained in every raw result. |
 | Censys | <https://platform.censys.io/> | Create a personal access token under Account → API. The free plan includes 100 credits/month. Leave `CENSYS_ORG_ID` empty for an individual free account; otherwise use the organization UUID, not its name. `CENSYS_MONTHLY_LIMIT` caps calls. |
 | AlienVault OTX | <https://otx.alienvault.com/> | Optional key for higher limits |
 | GreyNoise | <https://viz.greynoise.io/signup> | Optional key for higher limits |
@@ -61,5 +63,7 @@ web metadata, and the selected router profile. Port scan can add Nmap for an aut
   requests uncompressed responses with `Connection: close` and permits one retry.
 - **ip-api.com** classifies some dynamic residential addresses as hosting. AbuseIPDB's usage type can be more useful
   for this distinction.
+- **IPinfo.io Lite** identifies the network's autonomous system, not the subscriber or device using an address.
+  Its location is country-level and the provider is queried only when `IPINFO_TOKEN` is configured.
 - **Spamhaus PBL** means that the provider identifies the range as an end-user address pool. It is normal for
   residential connections and is not evidence of abuse.

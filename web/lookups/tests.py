@@ -8,7 +8,7 @@ from django.urls import reverse
 from django.utils import translation
 
 from . import llm
-from .collectors import bnetza, censys, fritzbox, history, host, ip, phone, router, speedport, threatintel
+from .collectors import bnetza, censys, fritzbox, history, host, ip, ipinfo, phone, router, speedport, threatintel
 from .collectors import tools as tools_client
 from .detect import detect, extract
 from .models import Lookup, OwnedTarget
@@ -187,6 +187,97 @@ class IpTests(SimpleTestCase):
         other = [(None, None, None, "", ("8.8.8.8", 0))]
         with mock.patch("socket.getaddrinfo", return_value=other), self.assertRaisesRegex(RuntimeError, "nicht auf"):
             asyncio.run(ip.verify_ip_dns_binding("8.8.4.4", "edge.example.net"))
+
+
+@override_settings(OSINT_IPINFO_TOKEN="secret-token")
+class IpinfoTests(SimpleTestCase):
+    SAMPLE = {
+        "ip": "2001:4860:4860::8888",
+        "asn": "AS15169",
+        "as_name": "Example Network LLC",
+        "as_domain": "example.net",
+        "country_code": "US",
+        "country": "United States",
+        "continent_code": "NA",
+        "continent": "North America",
+        "unexpected_paid_field": "must not leak into stored results",
+    }
+
+    def _run(self, response, address="2001:4860:4860::8888"):
+        import httpx
+        calls = []
+
+        def handler(request):
+            calls.append(request)
+            return response
+
+        async def go():
+            async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+                return await ipinfo.lookup(client, address)
+
+        return asyncio.run(go()), calls
+
+    def test_lite_request_uses_bearer_token_and_supports_ipv6(self):
+        import httpx
+        result, calls = self._run(httpx.Response(200, json=self.SAMPLE))
+        request = calls[0]
+        self.assertEqual(str(request.url), "https://api.ipinfo.io/lite/2001:4860:4860::8888")
+        self.assertEqual(request.headers["Authorization"], "Bearer secret-token")
+        self.assertNotIn("secret-token", str(request.url))
+        self.assertEqual(result["asn"], "AS15169")
+        self.assertNotIn("unexpected_paid_field", result)
+        self.assertEqual(result["source_url"], "https://ipinfo.io/")
+
+    def test_rejects_auth_errors_and_a_response_for_another_address(self):
+        import httpx
+        with self.assertRaisesMessage(RuntimeError, "rejected the access token"):
+            self._run(httpx.Response(401, json={}))
+        wrong = {**self.SAMPLE, "ip": "2001:4860:4860::8844"}
+        with self.assertRaisesMessage(RuntimeError, "does not match"):
+            self._run(httpx.Response(200, json=wrong))
+
+    @override_settings(OSINT_IPINFO_TOKEN="")
+    def test_source_is_only_added_when_a_token_is_configured(self):
+        names = []
+
+        async def fake_run_source(name, fn, *args):
+            names.append(name)
+            return {"source": name, "ok": True, "data": {}}
+
+        with mock.patch.object(ip, "run_source", fake_run_source):
+            asyncio.run(ip.collect(None, "8.8.8.8"))
+        self.assertNotIn(ipinfo.SOURCE, names)
+        names.clear()
+        with override_settings(OSINT_IPINFO_TOKEN="secret-token"), mock.patch.object(ip, "run_source", fake_run_source):
+            asyncio.run(ip.collect(None, "8.8.8.8"))
+        self.assertIn(ipinfo.SOURCE, names)
+
+    def test_owned_target_suggestion_uses_ipinfo_asn_and_network_name(self):
+        from .views import _owned_target_suggestion
+        lookup = Lookup(kind="ip", query="203.0.113.8", sources=[{
+            "source": ipinfo.SOURCE,
+            "ok": True,
+            "data": {"ip": "203.0.113.8", "asn": "AS64500", "as_name": "Example Network LLC"},
+        }])
+        suggestion = _owned_target_suggestion(lookup)
+        self.assertEqual(suggestion["asn"], "AS64500")
+        self.assertEqual(suggestion["provider"], "Example Network LLC")
+        self.assertEqual(suggestion["evidence"], ipinfo.SOURCE)
+
+    def test_history_compares_ipinfo_network_context_only_when_both_runs_have_it(self):
+        def source(asn, name, country):
+            return [{"source": ipinfo.SOURCE, "ok": True,
+                     "data": {"asn": asn, "as_name": name, "country_code": country}}]
+
+        self.assertEqual(historie.compare(
+            source("AS64500", "Old Network", "DE"),
+            source("AS64501", "New Network", "NL"),
+        ), [
+            ("ipinfo_as_name", "Old Network", "New Network"),
+            ("ipinfo_asn", "AS64500", "AS64501"),
+            ("ipinfo_country", "DE", "NL"),
+        ])
+        self.assertEqual(historie.compare([], source("AS64501", "New Network", "NL")), [])
 
 
 class HostTests(SimpleTestCase):

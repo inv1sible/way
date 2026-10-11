@@ -185,6 +185,7 @@ OSINT_VIRUSTOTAL_KEY = env("VIRUSTOTAL_KEY")
 OSINT_OTX_KEY = env("OTX_KEY")
 OSINT_ABUSECH_KEY = env("ABUSECH_KEY")
 OSINT_CROWDSEC_KEY = env("CROWDSEC_KEY")
+OSINT_IPINFO_TOKEN = env("IPINFO_TOKEN")
 OSINT_CENSYS_TOKEN = env("CENSYS_TOKEN")
 OSINT_CENSYS_ORG_ID = env("CENSYS_ORG_ID")
 # Gratis-Tarif: 100 Credits im Monat; der Verbrauch je Abfrage ist nicht dokumentiert, daher vorsichtig

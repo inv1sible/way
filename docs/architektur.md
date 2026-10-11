@@ -61,9 +61,9 @@ matter to its assessment. New sources must not bypass this rule by adding separa
 ## Comparing runs
 
 `history.facts()` extracts measurable attributes from raw data: addresses, reverse DNS, ASN, TLS certificates,
-open ports, German Federal Network Agency and Clever Dialer matches, plus reputation values from AbuseIPDB,
-VirusTotal, CrowdSec, GreyNoise, OTX, abuse.ch, Spamhaus, Tor, Shodan, and Censys. Attributes are compared only when
-both runs contain them. A missing key or failed source is not treated as a change.
+open ports, German Federal Network Agency and Clever Dialer matches, plus IPinfo.io network context and reputation
+values from AbuseIPDB, VirusTotal, CrowdSec, GreyNoise, OTX, abuse.ch, Spamhaus, Tor, Shodan, and Censys. Attributes
+are compared only when both runs contain them. A missing key or failed source is not treated as a change.
 
 ## Tests
 
