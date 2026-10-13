@@ -10,6 +10,7 @@ from django.utils.translation import get_language
 
 PHONE_CHARS = re.compile(r"\+?[\d\s/()\-.]{3,30}")
 HOSTNAME = re.compile(r"(?=.{4,253}$)([a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z][a-z0-9-]{1,62}")
+EMAIL = re.compile(r"(?=.{3,254}$)[a-z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+$", re.IGNORECASE)
 
 
 def _message(german, english):
@@ -41,6 +42,8 @@ def detect(raw):
     Raises ValueError bei unbekannter Eingabe.
     """
     text = raw.strip()
+    if EMAIL.fullmatch(text):
+        return "email", text.lower()
     if ip := _ip(text):
         return "ip", ip
 
@@ -60,13 +63,14 @@ def detect(raw):
                 return "phone", phonenumbers.format_number(number, phonenumbers.PhoneNumberFormat.E164)
 
     raise ValueError(_message(
-        "Keine IP-Adresse, kein Hostname und keine gültige Rufnummer erkannt.",
-        "No IP address, hostname, or valid phone number was detected.",
+        "Keine E-Mail-Adresse, IP-Adresse, kein Hostname und keine gültige Rufnummer erkannt.",
+        "No email address, IP address, hostname, or valid phone number was detected.",
     ))
 
 
 # Muster für Kandidaten in geteiltem Freitext, in der Reihenfolge ihrer Prüfung.
 CANDIDATES = [
+    re.compile(r"\b[a-z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-z0-9-]+(?:\.[a-z0-9-]+)+\b", re.IGNORECASE),
     re.compile(r"https?://\S+"),
     re.compile(r"(?<![\d.])(?:\d{1,3}\.){3}\d{1,3}(?![\d.])"),
     re.compile(r"\[?[0-9a-fA-F]{0,4}(?::[0-9a-fA-F]{0,4}){2,7}\]?"),

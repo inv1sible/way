@@ -73,7 +73,8 @@ def _distance(record, day):
 
 def _out(record, **extra):
     return {"wert": record["wert"], "typ": record["typ"], "von": record["von"].isoformat(),
-            "bis": record["bis"].isoformat(), **extra}
+            "bis": record["bis"].isoformat(), "von_zeit": record["von_zeit"],
+            "bis_zeit": record["bis_zeit"], **extra}
 
 
 def summarize_passive(rows, day, kind):
@@ -86,7 +87,8 @@ def summarize_passive(rows, day, kind):
         except (KeyError, ValueError):
             continue
         if value:
-            records.append({"wert": value, "typ": row.get("record_type"), "von": first, "bis": last})
+            records.append({"wert": value, "typ": row.get("record_type"), "von": first, "bis": last,
+                            "von_zeit": str(row["first"]), "bis_zeit": str(row["last"])})
 
     covering, seen = [], set()
     for record in sorted((r for r in records if r["von"] <= day <= r["bis"]), key=lambda r: r["wert"]):
@@ -108,10 +110,13 @@ def summarize_passive(rows, day, kind):
         # Zeitleiste aller bekannten Adressen: zeigt Wechsel dynamischer Adressen
         spans = {}
         for record in records:
-            span = spans.setdefault(record["wert"], [record["von"], record["bis"]])
-            span[0], span[1] = min(span[0], record["von"]), max(span[1], record["bis"])
-        timeline = sorted(spans.items(), key=lambda item: item[1][0])
-        result["alle_adressen"] = [{"wert": v, "von": s[0].isoformat(), "bis": s[1].isoformat()} for v, s in timeline[:30]]
+            span = spans.setdefault(record["wert"], dict(record))
+            if record["von"] < span["von"]:
+                span["von"], span["von_zeit"] = record["von"], record["von_zeit"]
+            if record["bis"] > span["bis"]:
+                span["bis"], span["bis_zeit"] = record["bis"], record["bis_zeit"]
+        timeline = sorted(spans.items(), key=lambda item: item[1]["von"])
+        result["alle_adressen"] = [_out(s) for _, s in timeline[:30]]
     return result
 
 

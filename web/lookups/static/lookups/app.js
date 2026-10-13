@@ -58,6 +58,14 @@ function flash(button, ok) {
 }
 
 document.addEventListener("click", async (event) => {
+  const toggle = event.target.closest("[data-toggle-sources]");
+  if (toggle) {
+    const sources = [...document.querySelectorAll("#l-sources details")];
+    const expand = sources.some((source) => !source.open);
+    sources.forEach((source) => { source.open = expand; });
+    toggle.textContent = expand ? word("Alle einklappen", "Collapse all") : word("Alle aufklappen", "Expand all");
+    return;
+  }
   const single = event.target.closest("[data-copy-source]");
   if (single) {
     const raw = single.closest("details").querySelector(".raw");
@@ -151,19 +159,30 @@ document.addEventListener("click", async (event) => {
   });
 })();
 
-// Suchformular: Optionen sind nur für Netz-Ziele sinnvoll. Sie erscheinen ausschließlich, sobald die
-// Eingabe wie ein Hostname/eine IP aussieht (Punkt bzw. Doppelpunkt für IPv6). Der Fokus allein ändert
-// nichts. Für Rufnummern werden die ausgeblendeten Felder zusätzlich deaktiviert.
+// Suchformular: Optionen folgen der erkennbaren Eingabeart, nie dem Fokus allein. Ein @ zeigt die
+// E-Mail-Optionen; ein plausibler IP-/Hostname-Anfang die Netzoptionen; Rufnummern zeigen keine.
 (() => {
   const form = document.getElementById("analyze");
   if (!form) return;
   const query = form.querySelector('input[name="q"]');
-  const inputs = [...form.querySelectorAll(".opts input")];
-  const isNetworkTarget = () => /[.:]/.test(query.value.trim());
+  const groups = [...form.querySelectorAll("[data-options]")];
+  const inputKind = () => {
+    const value = query.value.trim();
+    if (value.includes("@")) return "email";
+    if (value.includes(":")) return "network"; // IPv6
+    if (/^(?:\d{1,3}\.){1,3}\d{0,3}$/.test(value)) return "network"; // IPv4 while typing
+    if (/[a-z]/i.test(value) && value.includes(".")) return "network"; // hostname
+    return "none";
+  };
   const sync = () => {
-    const networkTarget = isNetworkTarget();
-    inputs.forEach((input) => { input.disabled = !networkTarget; });
-    form.classList.toggle("open", networkTarget);
+    const kind = inputKind();
+    groups.forEach((group) => {
+      const visible = group.dataset.options === kind;
+      group.hidden = !visible;
+      group.querySelectorAll("input").forEach((input) => { input.disabled = !visible; });
+    });
+    form.classList.toggle("open", kind !== "none");
+    form.dataset.inputKind = kind;
   };
   form.classList.add("collapsible");
   sync();

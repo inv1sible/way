@@ -8,7 +8,7 @@
   {% endif %}
 {% endblock %}
 {% block content %}
-<p><a href="{% url 'lookups:index' %}">← {% ui 'Neue Abfrage' 'New query' %}</a></p>
+<p><a href="{% url 'lookups:index' %}">← Back</a></p>
 <div class="title-row">
   <h1>{{ lookup.query }}</h1>
   <div class="toolbar">
@@ -19,6 +19,55 @@
   </div>
 </div>
 {% if lookup.note %}<p class="note">{{ lookup.note }}</p>{% endif %}
+{% if not lookup.is_running %}
+<div id="rerun-pop" popover class="note-pop rerun-pop">
+  <form method="post" action="{% url 'lookups:rerun' lookup.pk %}">{% csrf_token %}
+    {% if lookup.kind == "email" %}
+    <label><strong>{% ui 'E-Mail erneut analysieren' 'Run email analysis again' %}</strong></label>
+    <p class="muted note-tip">{% ui 'Neue oder zuvor nicht gewählte Quellen werden erst nach deiner erneuten Auswahl abgefragt.' 'New or previously unselected sources run only after you select them again.' %}</p>
+    <label class="check"><input type="checkbox" name="email_public_web" value="on"{% if lookup.email_public_web %} checked{% endif %}>
+      <span>{% ui 'Öffentliche Web-Referenzen: exakte Adresse in Suchergebnissen prüfen' 'Public web references: check the exact address in search results' %}
+        <span class="muted">({% ui 'höchstens zwei Suchen; keine Ergebnis-Webseiten öffnen oder crawlen; keine Messenger-, Personenverzeichnis- oder Leak-Suche' 'at most two searches; no result-page fetching or crawling; no messenger, people-directory, or leak search' %})</span></span></label>
+    {% elif lookup.kind == "ip" or lookup.kind == "host" %}
+    <label><strong>{% ui 'Netzwerkziel erneut analysieren' 'Run network-target analysis again' %}</strong></label>
+    <p class="muted note-tip">{% ui 'Die passive Analyse läuft immer. Aktive Optionen werden nur ausgeführt, wenn du sie hier erneut auswählst und bestätigst.' 'The passive analysis always runs. Active options run only when you select and confirm them here again.' %}</p>
+    <label>{% ui 'Stand (optional)' 'Reference date (optional)' %}
+      <input type="date" name="asof" min="2000-01-01" max="{% now 'Y-m-d' %}"{% if lookup.as_of %} value="{{ lookup.as_of|date:'Y-m-d' }}"{% endif %}></label>
+    {% if enrichment_allowed %}
+    <label class="check"><input type="checkbox" name="active" value="on">
+      <span>{% ui 'Leichte aktive Router-Erkennung ausführen' 'Run active-light router fingerprinting' %}</span></label>
+    <label for="rerun-profile">{% ui 'Prüfprofil' 'Probe profile' %}</label>
+    <select id="rerun-profile" name="profile">
+      <option value="generic-router">{% ui 'Generischer Router – TLS, Header und Titel auf /' 'Generic router – TLS, headers and title at /' %}</option>
+      <option value="fritzbox"{% if lookup.active_profile == 'fritzbox' %} selected{% endif %}>{% ui 'FRITZ!Box – zusätzlich /jason_boxinfo.xml' 'FRITZ!Box – additionally /jason_boxinfo.xml' %}</option>
+      <option value="speedport"{% if lookup.active_profile == 'speedport' %} selected{% endif %}>{% ui 'Speedport (experimentell) – zusätzlich /data/Status.json' 'Speedport (experimental) – additionally /data/Status.json' %}</option>
+    </select>
+    <div class="enrich-fields">
+      <label>{% ui 'Freigegebene Web-Ports' 'Approved web ports' %}
+        <input name="active_ports" inputmode="numeric" value="{% if lookup.active_probe %}{{ lookup.active_ports|join:', ' }}{% endif %}" placeholder="443" maxlength="23"></label>
+      <label>{% ui 'Timeout je Anfrage' 'Timeout per request' %}
+        <input name="active_timeout" type="number" min="2" max="20"{% if lookup.active_probe %} value="{{ lookup.active_timeout }}"{% endif %} placeholder="8"></label>
+    </div>
+    <label class="check"><input type="checkbox" name="scan" value="on">
+      <span>{% ui 'Begrenzten Portscan ausführen' 'Run bounded port scan' %}</span></label>
+    <label class="check enrich-confirm"><input type="checkbox" name="authorization" value="confirmed">
+      <span>{% ui 'Ich bestätige die Berechtigung für jede ausgewählte aktive Prüfung.' 'I confirm authorization for every selected active check.' %}</span></label>
+    <p class="muted note-tip">{% ui 'Aktive Prüfungen sind sequenziell, begrenzt und ohne Redirects, Anmeldung, Zugangsdaten, Brute Force, Exploits oder Schwachstellenproben.' 'Active checks are sequential and bounded, with no redirects, sign-in, credentials, brute force, exploits, or vulnerability probes.' %}</p>
+    {% elif user.is_staff %}
+    <p class="muted note-tip">{% ui 'Aktive Optionen sind erst verfügbar, wenn dieses Ziel als eigenes System eingerichtet ist und bei Hostnamen erlaubte Origin-ASNs hinterlegt sind.' 'Active options become available after this target is set up as owned and, for hostnames, allowed origin ASNs are recorded.' %}</p>
+    {% else %}
+    <p class="muted note-tip">{% ui 'Für dieses Konto stehen nur passive Quellen zur Verfügung.' 'Only passive sources are available for this account.' %}</p>
+    {% endif %}
+    {% else %}
+    <label><strong>{% ui 'Rufnummer erneut analysieren' 'Run phone-number analysis again' %}</strong></label>
+    <p class="muted note-tip">{% ui 'Passive Quellen laufen immer. Die öffentliche Web-Recherche ist begrenzt.' 'Passive sources always run. The public web search is bounded.' %}</p>
+    <label class="check"><input type="checkbox" name="phone_public_web" value="on"{% if lookup.phone_public_web %} checked{% endif %}>
+      <span>{% ui 'Öffentliche Web-Recherche starten' 'Run public web search' %}</span></label>
+    {% endif %}
+    <button class="small">{% ui 'Analyse starten' 'Start analysis' %}</button>
+  </form>
+</div>
+{% endif %}
 {% if enrichment_setup_required %}
 <p class="muted enrichment-hint">
   {% if enrichment_requires_asn %}
@@ -97,7 +146,7 @@
   <details class="run">
     <summary>{{ run.created_at|ui_datetime }}
       {% if run.created_at > lookup.created_at %}<span class="muted">({% ui 'neuer' 'newer' %})</span>{% endif %}
-      · {% if run.risk %}<span class="risk risk-{{ run.risk }}">{% ui 'Risiko' 'Risk' %} {{ run.risk|risk_label }}</span>{% else %}{{ run.status|status_label }}{% endif %}
+      · {{ run.status|status_label }}
       {% if run.as_of %}<span class="muted">· {% ui 'Stand' 'As of' %} {{ run.as_of|ui_date }}</span>{% endif %}
       <span class="muted">· {% if run.changes is None %}{% ui 'erste Analyse' 'first analysis' %}{% elif run.changes %}{% if LANGUAGE_CODE == 'en' %}{{ run.changes|length }} change{{ run.changes|length|pluralize }}{% else %}{{ run.changes|length }} Änderung{{ run.changes|length|pluralize:"en" }}{% endif %}{% else %}{% ui 'unverändert' 'unchanged' %}{% endif %}</span>
     </summary>
@@ -129,6 +178,7 @@
 
   <div id="l-sources-h" class="sources-head"{% if not sources %} hidden{% endif %}>
     <h2>{% ui 'Rohdaten' 'Raw data' %}</h2>
+    <button type="button" class="copy secondary" data-toggle-sources>{% ui 'Alle aufklappen' 'Expand all' %}</button>
     <button type="button" class="copy secondary" data-copy-all>{% ui 'Alle kopieren' 'Copy all' %}</button>
   </div>
   <div id="l-sources">

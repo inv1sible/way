@@ -54,6 +54,13 @@ git pull
 docker compose up -d --build
 ```
 
+### Completion convention
+
+After every completed change, rebuild and restart the Compose services with `docker compose up -d --build`, then
+verify that the web service is running and responds. Source-level tests alone are not a completed WAY change: the
+running containers must use the changed artifact. Do this only for this local WAY deployment; publishing or changing
+other environments still requires separate authorization.
+
 Migrations run automatically when the `web` container starts. Restarting `web` causes a few seconds of reverse
 proxy errors. The worker has `stop_grace_period: 5m` so running analyses can finish. Runs interrupted by a restart
 are marked failed on the next startup.

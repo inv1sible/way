@@ -10,6 +10,7 @@ def default_active_ports():
 
 class Lookup(models.Model):
     class Kind(models.TextChoices):
+        EMAIL = "email", "E-Mail-Adresse"
         PHONE = "phone", "Rufnummer"
         IP = "ip", "IP-Adresse"
         HOST = "host", "Hostname"
@@ -67,6 +68,14 @@ class Lookup(models.Model):
     active_profile = models.CharField(
         "aktives Profil", max_length=20, choices=ActiveProfile.choices, default=ActiveProfile.FRITZBOX,
         help_text="Ausdrücklich ausgewähltes, nicht destruktives aktives Prüfprofil.",
+    )
+    email_public_web = models.BooleanField(
+        "Öffentliche E-Mail-Referenzen", default=False,
+        help_text="Ausdrücklich bestätigte, begrenzte Suche nach der exakten E-Mail-Adresse in öffentlichen Web-Suchergebnissen.",
+    )
+    phone_public_web = models.BooleanField(
+        "Öffentliche Rufnummern-Referenzen", default=False,
+        help_text="Ausdrücklich bestätigte, begrenzte Suche nach der Rufnummer in öffentlichen Web-Suchergebnissen.",
     )
     enrichment_of = models.ForeignKey(
         "self", null=True, blank=True, on_delete=models.SET_NULL, related_name="+", editable=False,

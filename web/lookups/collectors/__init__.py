@@ -32,15 +32,16 @@ async def run_source(name, fn, *args):
 
 
 async def collect(kind, query, on_result=None, active=False, active_ports=None, active_timeout=8, active_profile="fritzbox",
-                  scan=False, scan_asns=None, active_asns=None, active_dns_name=None, as_of=None):
-    from . import host, ip, phone
+                  scan=False, scan_asns=None, active_asns=None, active_dns_name=None, as_of=None, email_public_web=False,
+                  phone_public_web=False):
+    from . import email, host, ip, phone
 
     _on_result.set(on_result)
 
-    collector = {"ip": ip.collect, "host": host.collect, "phone": phone.collect}[kind]
+    collector = {"email": email.collect, "ip": ip.collect, "host": host.collect, "phone": phone.collect}[kind]
     async with httpx.AsyncClient(timeout=15, headers={"User-Agent": USER_AGENT}) as client:
         extra = {}
-        if kind != "phone":
+        if kind not in {"phone", "email"}:
             extra.update(active_ports=active_ports, active_timeout=active_timeout, active_profile=active_profile)
         if kind == "ip":
             extra["active_asns"] = active_asns
@@ -48,4 +49,8 @@ async def collect(kind, query, on_result=None, active=False, active_ports=None, 
         if kind == "host":
             extra["scan_asns"] = scan_asns
             extra["active_asns"] = active_asns
+        if kind == "email":
+            extra["public_web"] = email_public_web
+        if kind == "phone":
+            extra["public_web"] = phone_public_web
         return await collector(client, query, active=active, scan=scan, as_of=as_of, **extra)

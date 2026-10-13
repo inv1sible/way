@@ -7,7 +7,8 @@ country code use `DEFAULT_REGION`. URLs are accepted and reduced to their hostna
 `https://example.org/path` becomes `example.org`.
 
 Network-specific options remain hidden for phone numbers. They appear only after the input contains a period, as
-used by IPv4 addresses and hostnames, or a colon for IPv6.
+used by IPv4 addresses and hostnames, or a colon for IPv6. Entering a phone number offers a separately authorized,
+bounded public web search; entering an email address offers its corresponding authorized public-reference search.
 
 - **Reference date (optional):** adds historical BGP data from RIPEstat, passive DNS from AlienVault OTX, and the
   user's own analysis closest to the selected date. Passive DNS is incomplete; only the provider can establish who
@@ -18,6 +19,10 @@ used by IPv4 addresses and hostnames, or a colon for IPv6.
   [Router Fingerprint](router-fingerprint.md).
 - **Port scan** (administrators only): run Nmap against the top 1,000 ports, restricted to entries in
   **Owned systems**. See [Security and operational security](sicherheit.md).
+- **Public web search (email and phone):** WAY queries its self-hosted SearXNG
+  instance only. Email uses at most two exact-address searches; phone uses at most three format-aware searches.
+  WAY stores matching result metadata but does not open, crawl, or scrape result pages. Professional public-profile
+  snippets may appear for an email address; they are not proof of identity or account ownership.
 
 Select **Analyze** to create the analysis and open its detail page.
 
@@ -32,7 +37,7 @@ One grouped entry includes every run of that query. Running analyses cannot be d
 
 ## Detail page
 
-- **Toolbar:** edit the persistent note, download a PDF, or repeat the analysis with the same options. PDF and
+- **Toolbar:** edit the persistent note, download a PDF, or repeat the analysis with the available options. PDF and
   repeat actions become available after completion.
 - **Other analyses of this query:** expandable list of earlier runs. Each run shows measurable changes from its
   predecessor, such as `abuseipdb_score: 0 → 40`, risk, addresses, or open ports, and provides an **Open** action.
@@ -58,7 +63,8 @@ One grouped entry includes every run of that query. Running analyses cannot be d
   together with expected provider ASNs. Before every active check, WAY resolves all current addresses, validates
   them against those ASNs, pins the selected address, and records the time-bound binding in raw data. ISP reverse
   DNS is not proof of ownership.
-- **Raw data:** every source can be expanded and copied separately, with **Copy all** for the complete source set.
+- **Raw data:** every source can be expanded and copied separately, with **Expand all / Collapse all** and **Copy all**
+  for the complete source set.
 
 ## Extensions and published main numbers
 
@@ -74,7 +80,8 @@ It proves neither the specific extension nor the identity of a caller. Substring
 discarded. Tests use synthetic data only and make no network requests.
 
 Phone web search uses at most three requests: the formatted exact number, the digits-only form if necessary, and a
-main-number or directory query where appropriate. WAY does not attempt to bypass a blocked search engine.
+main-number or directory query where appropriate. WAY does not
+attempt to bypass a blocked search engine.
 
 The page updates itself while an analysis runs, showing progress, new sources, and the final report.
 

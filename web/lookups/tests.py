@@ -8,16 +8,18 @@ from django.urls import reverse
 from django.utils import translation
 
 from . import llm
-from .collectors import bnetza, censys, fritzbox, history, host, ip, ipinfo, phone, router, speedport, threatintel
+from .collectors import bnetza, censys, email, fritzbox, history, host, ip, ipinfo, netlas, phone, router, shodan, speedport, threatintel
 from .collectors import tools as tools_client
 from .detect import detect, extract
 from .models import Lookup, OwnedTarget
 from . import historie, ownership
-from .templatetags.report_tags import markdown, report_parts
+from .templatetags.report_tags import fundstellen, markdown, report_parts
 
 
 @override_settings(OSINT_DEFAULT_REGION="DE")
 class DetectTests(SimpleTestCase):
+    def test_email_normalizes_case(self):
+        self.assertEqual(detect("  User.Name+tag@Example.ORG "), ("email", "user.name+tag@example.org"))
     def test_ipv4_and_ipv6(self):
         self.assertEqual(detect(" 8.8.8.8 "), ("ip", "8.8.8.8"))
         self.assertEqual(detect("[2001:DB8::1]"), ("ip", "2001:db8::1"))
@@ -41,6 +43,106 @@ class DetectTests(SimpleTestCase):
         for raw in ("hallo", "http://", "foo bar.com", ""):
             with self.assertRaises(ValueError):
                 detect(raw)
+
+
+@override_settings(CACHES={"default": {"BACKEND": "django.core.cache.backends.locmem.LocMemCache"}}, OSINT_HIBP_KEY="a" * 32)
+class EmailExposureTests(SimpleTestCase):
+    def setUp(self):
+        from django.core.cache import cache
+        cache.clear()
+
+    def test_hibp_returns_breach_metadata_without_pastes(self):
+        import httpx
+        observed = {}
+
+        def handler(request):
+            observed.update({"url": str(request.url), "headers": dict(request.headers)})
+            return httpx.Response(200, json=[{"Name": "Example", "Title": "Example breach", "Domain": "example.org",
+                                              "BreachDate": "2025-01-01", "DataClasses": ["Email addresses"],
+                                              "Description": "must not be kept"}])
+
+        async def go():
+            async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+                return await email.hibp(client, "person@example.org")
+
+        result = asyncio.run(go())
+        self.assertEqual(result["breaches"][0]["Name"], "Example")
+        self.assertNotIn("Description", result["breaches"][0])
+        self.assertIn("breachedaccount/person%40example.org", observed["url"])
+        self.assertNotIn("paste", observed["url"])
+        self.assertEqual(observed["headers"]["hibp-api-key"], "a" * 32)
+
+    def test_hibp_404_is_normal_negative_result(self):
+        import httpx
+
+        async def go():
+            async with httpx.AsyncClient(transport=httpx.MockTransport(lambda request: httpx.Response(404))) as client:
+                return await email.hibp(client, "person@example.org")
+
+        self.assertEqual(asyncio.run(go())["breaches"], [])
+
+    @override_settings(OSINT_HIBP_KEY="")
+    def test_missing_key_is_capability_status(self):
+        result = asyncio.run(email.collect(None, "person@example.org"))
+        self.assertFalse(result[-1]["ok"])
+        self.assertIn("Nicht konfiguriert", result[-1]["error"])
+
+    def test_public_web_keeps_exact_public_search_references_only(self):
+        async def fake_searx(client, query, limit=10, pageno=1, meta=None):
+            meta.update({"ok": {"bing"}, "gestoert": {"qwant": "CAPTCHA"}})
+            self.assertEqual(query, '"person@example.org"')
+            return [
+                {"url": "https://example.org/contact", "titel": "Contact", "auszug": "person@example.org"},
+                {"url": "https://linkedin.com/in/person", "titel": "person@example.org", "auszug": ""},
+                {"url": "https://example.net", "titel": "Unrelated", "auszug": "No address here"},
+            ]
+
+        with mock.patch.object(email.search, "searx", fake_searx):
+            result = asyncio.run(email.public_web_search(None, "person@example.org"))
+        self.assertEqual(result["references"], [
+            {"url": "https://example.org/contact", "titel": "Contact", "fundstelle": "person@example.org"},
+            {"url": "https://linkedin.com/in/person", "titel": "person@example.org", "fundstelle": None},
+        ])
+        self.assertEqual(result["suchmaschinen_mit_ergebnissen"], ["bing"])
+        self.assertIn("nicht automatisiert geöffnet", result["grenzen"][0])
+
+    def test_public_web_source_runs_only_when_explicitly_requested(self):
+        async def fake_run_source(name, fn, *args):
+            return {"source": name, "ok": True, "data": {}}
+
+        with override_settings(OSINT_HIBP_KEY=""), mock.patch.object(email, "run_source", fake_run_source):
+            disabled = asyncio.run(email.collect(None, "person@example.org"))
+            enabled = asyncio.run(email.collect(None, "person@example.org", public_web=True))
+        self.assertFalse(any(item["source"] == email.PUBLIC_WEB_SOURCE for item in disabled))
+        self.assertTrue(any(item["source"] == email.PUBLIC_WEB_SOURCE for item in enabled))
+
+
+@override_settings(CACHES={"default": {"BACKEND": "django.core.cache.backends.locmem.LocMemCache"}}, OSINT_VIRUSTOTAL_KEY="vt-key")
+class VirusTotalResolutionTests(SimpleTestCase):
+    def setUp(self):
+        from django.core.cache import cache
+        cache.clear()
+
+    def test_resolution_history_is_bounded_cached_and_labelled(self):
+        import httpx
+        calls = []
+
+        def handler(request):
+            calls.append(request)
+            return httpx.Response(200, json={"data": [
+                {"attributes": {"host_name": "old.example.org", "date": 1}},
+                {"attributes": {"host_name": "", "date": 2}},
+            ]})
+
+        async def go():
+            async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+                return await threatintel.virustotal_resolutions(client, "203.0.113.5"), await threatintel.virustotal_resolutions(client, "203.0.113.5")
+
+        first, second = asyncio.run(go())
+        self.assertEqual(first["aufloesungen"], [{"host_name": "old.example.org", "beobachtet_am": "1970-01-01T00:00:01Z"}])
+        self.assertIn("keine Zuordnung", first["hinweis"])
+        self.assertTrue(second["aus_zwischenspeicher"])
+        self.assertEqual(len(calls), 1)
 
 
 class PhoneAnalyzeTests(SimpleTestCase):
@@ -311,8 +413,18 @@ class ReportTests(SimpleTestCase):
     def test_prompt_requires_equivalent_german_and_english_reports(self):
         self.assertIn("# Deutsch", llm.SYSTEM_PROMPT)
         self.assertIn("# English", llm.SYSTEM_PROMPT)
-        self.assertIn("Risk: low", llm.SYSTEM_PROMPT)
-        self.assertIn("übereinstimmen", llm.SYSTEM_PROMPT)
+        self.assertIn("Identification and attribution", llm.SYSTEM_PROMPT)
+        self.assertNotIn("## Risk assessment", llm.SYSTEM_PROMPT)
+
+    def test_positive_web_findings_are_added_to_both_report_languages(self):
+        report = "# Deutsch\n## Kurzfazit\nFund.\n\n# English\n## Executive summary\nFinding."
+        sources = [{"source": "Websuche (SearXNG)", "ok": True, "data": {"treffer": [{
+            "titel": "Organisation", "url": "https://example.org/contact", "auszug": "Kontaktangabe",
+        }]}}]
+        output = llm.append_web_findings(report, sources)
+        self.assertIn("## Belegte Web-Fundstellen", output)
+        self.assertIn("## Documented web findings", output)
+        self.assertEqual(output.count("https://example.org/contact"), 2)
 
     def test_markdown_escapes_html(self):
         html = markdown("## Titel\n<script>alert(1)</script>")
@@ -373,6 +485,69 @@ class ViewTests(TestCase):
         self.assertRedirects(response, reverse("lookups:detail", args=[lookup.pk]))
         self.assertEqual((lookup.kind, lookup.query), ("phone", "+49301234567"))
         delay.assert_called_once_with(lookup.pk)
+
+    def test_email_creates_lookup_without_authorization_checkbox(self):
+        self.client.force_login(self.user)
+        with mock.patch("lookups.views.run_lookup.delay") as delay, self.captureOnCommitCallbacks(execute=True):
+            response = self.client.post(reverse("lookups:index"), {"q": "person@example.org"})
+        lookup = Lookup.objects.get()
+        self.assertRedirects(response, reverse("lookups:detail", args=[lookup.pk]))
+        delay.assert_called_once_with(lookup.pk)
+
+    def test_email_normalizes_before_creating_lookup(self):
+        self.client.force_login(self.user)
+        with mock.patch("lookups.views.run_lookup.delay") as delay, self.captureOnCommitCallbacks(execute=True):
+            response = self.client.post(reverse("lookups:index"), {"q": "Person@Example.ORG"})
+        lookup = Lookup.objects.get()
+        self.assertRedirects(response, reverse("lookups:detail", args=[lookup.pk]))
+        self.assertEqual((lookup.kind, lookup.query), ("email", "person@example.org"))
+        delay.assert_called_once_with(lookup.pk)
+
+    def test_email_can_enable_public_web_references(self):
+        self.client.force_login(self.user)
+        with mock.patch("lookups.views.run_lookup.delay"), self.captureOnCommitCallbacks(execute=True):
+            self.client.post(reverse("lookups:index"), {
+                "q": "person@example.org", "email_public_web": "on",
+            })
+        self.assertTrue(Lookup.objects.get().email_public_web)
+
+    def test_email_rerun_can_select_new_source_without_authorization_checkbox(self):
+        original = Lookup.objects.create(kind="email", query="person@example.org", created_by=self.user)
+        self.client.force_login(self.user)
+        with mock.patch("lookups.views.run_lookup.delay"), self.captureOnCommitCallbacks(execute=True):
+            response = self.client.post(reverse("lookups:rerun", args=[original.pk]), {
+                "email_public_web": "on",
+            })
+        rerun = Lookup.objects.latest("pk")
+        self.assertRedirects(response, reverse("lookups:detail", args=[rerun.pk]))
+        self.assertTrue(rerun.email_public_web)
+
+    def test_email_detail_offers_rerun_options(self):
+        lookup = Lookup.objects.create(kind="email", query="person@example.org", created_by=self.user, status=Lookup.Status.DONE)
+        self.client.force_login(self.user)
+        page = self.client.get(reverse("lookups:detail", args=[lookup.pk]))
+        self.assertContains(page, 'id="rerun-pop"', html=False)
+        self.assertContains(page, 'name="email_public_web"', html=False)
+        self.assertNotContains(page, 'name="email_authorized"', html=False)
+        self.assertContains(page, '← Back', html=False)
+
+    def test_phone_detail_offers_the_passive_rerun_dialog(self):
+        lookup = Lookup.objects.create(kind="phone", query="+49301234567", created_by=self.user, status=Lookup.Status.DONE)
+        self.client.force_login(self.user)
+        page = self.client.get(reverse("lookups:detail", args=[lookup.pk]))
+        self.assertContains(page, 'id="rerun-pop"', html=False)
+        self.assertContains(page, "Rufnummer erneut analysieren")
+        self.assertContains(page, 'name="phone_public_web"', html=False)
+        self.assertNotContains(page, 'name="phone_authorized"', html=False)
+        self.assertNotContains(page, 'name="active"', html=False)
+
+    def test_phone_public_web_is_stored_without_authorization_checkbox(self):
+        self.client.force_login(self.user)
+        with mock.patch("lookups.views.run_lookup.delay"), self.captureOnCommitCallbacks(execute=True):
+            self.client.post(reverse("lookups:index"), {
+                "q": "030 1234567", "phone_public_web": "on",
+            })
+        self.assertTrue(Lookup.objects.latest("pk").phone_public_web)
 
     def test_invalid_input_shows_error(self):
         self.client.force_login(self.user)
@@ -450,8 +625,8 @@ class ViewTests(TestCase):
         self.client.force_login(self.user)
         page = self.client.get(reverse("lookups:detail", args=[current.pk]))
         changes = {r.pk: r.changes for r in page.context["runs"]}
-        self.assertEqual(changes[second.pk], [("risiko", "niedrig", "mittel"), ("abuseipdb_score", "0", "40")])
-        self.assertContains(page, "2 Änderungen")
+        self.assertEqual(changes[second.pk], [("abuseipdb_score", "0", "40")])
+        self.assertContains(page, "1 Änderung")
         self.assertContains(page, "Öffnen")
 
     def test_history_list_sorts_runs_of_the_same_minute_alphabetically(self):
@@ -654,6 +829,14 @@ class WebSearchTests(SimpleTestCase):
             {"source": "Websuche (SearXNG)", "ok": True, "data": [{"titel": "js", "url": "javascript:alert(1)"}]},
         ]
         self.assertEqual([h["url"] for h in fundstellen(sources)], ["https://a.example/", "https://www.tellows.de/num/1"])
+
+    def test_public_email_references_are_shown_as_web_findings(self):
+        sources = [{"source": "Öffentliche Web-Referenzen (SearXNG)", "ok": True,
+                    "data": {"references": [{"url": "https://example.org/contact", "titel": "Contact",
+                                                "fundstelle": "person@example.org"}]}}]
+        self.assertEqual(fundstellen(sources), [{"url": "https://example.org/contact", "titel": "Contact",
+                                                  "fundstelle": "person@example.org", "auszug": "person@example.org",
+                                                  "quelle": "Öffentliche Web-Referenzen (SearXNG)"}])
 
 
 class ThreatIntelTests(SimpleTestCase):
@@ -1092,15 +1275,40 @@ class ActiveProbeTests(TestCase):
         self.client.force_login(self.normal)
         self.assertNotContains(self.client.get(reverse("lookups:index")), 'name="active"')
 
-    def test_rerun_keeps_the_level_and_meta_shows_it(self):
+    def test_rerun_requires_a_fresh_active_selection_and_confirmation(self):
         first = self._submit(self.staff, active="on")
         self.client.force_login(self.staff)
+        blocked = self.client.post(reverse("lookups:rerun", args=[first.pk]), {"active": "on"}, follow=True)
+        self.assertContains(blocked, "Berechtigung", status_code=200)
+        self.assertEqual(Lookup.objects.count(), 1)
         with mock.patch("lookups.views.run_lookup.delay"), self.captureOnCommitCallbacks(execute=True):
-            self.client.post(reverse("lookups:rerun", args=[first.pk]))
+            self.client.post(reverse("lookups:rerun", args=[first.pk]), {
+                "active": "on", "authorization": "confirmed", "profile": "speedport",
+                "active_ports": "80, 443", "active_timeout": "12",
+            })
         again = Lookup.objects.latest("pk")
         self.assertNotEqual(again.pk, first.pk)
         self.assertTrue(again.active_probe)
+        self.assertEqual(again.active_profile, Lookup.ActiveProfile.SPEEDPORT)
+        self.assertEqual(again.active_ports, [80, 443])
+        self.assertEqual(again.active_timeout, 12)
         self.assertContains(self.client.get(reverse("lookups:detail", args=[again.pk])), "leicht aktiv")
+
+    def test_rerun_without_active_options_is_passive(self):
+        first = self._submit(self.staff, active="on")
+        self.client.force_login(self.staff)
+        with mock.patch("lookups.views.run_lookup.delay"), self.captureOnCommitCallbacks(execute=True):
+            self.client.post(reverse("lookups:rerun", args=[first.pk]), {"asof": ""})
+        self.assertFalse(Lookup.objects.latest("pk").active_probe)
+
+    def test_network_detail_offers_rerun_options(self):
+        lookup = Lookup.objects.create(kind="ip", query="8.8.8.8", created_by=self.staff, status=Lookup.Status.DONE)
+        self.client.force_login(self.staff)
+        page = self.client.get(reverse("lookups:detail", args=[lookup.pk]))
+        self.assertContains(page, 'id="rerun-pop"', html=False)
+        self.assertContains(page, 'name="active"', html=False)
+        self.assertContains(page, 'name="scan"', html=False)
+        self.assertContains(page, 'name="asof"', html=False)
 
     def test_task_passes_level_to_collectors(self):
         from .tasks import run_lookup
@@ -1368,6 +1576,17 @@ class PromptBudgetTests(SimpleTestCase):
         self.assertIn("kita.example", prompt)
         self.assertIn("gekürzt", prompt)
         self.assertLess(len(prompt), 6000)
+
+    def test_prompt_prioritizes_historical_dns_and_excludes_failed_sources(self):
+        sources = [
+            {"source": "WHOIS (lokal)", "ok": True, "data": {"text": "x" * 20_000}},
+            {"source": "VirusTotal (historische DNS-Auflösungen)", "ok": True,
+             "data": {"aufloesungen": [{"host_name": "router.example.net", "date": 1}]}},
+            {"source": "Censys", "ok": False, "error": "Rate limit reached"},
+        ]
+        prompt = llm.build_prompt("ip", "8.8.8.8", sources)
+        self.assertIn("router.example.net", prompt)
+        self.assertNotIn("Rate limit reached", prompt)
 
 
 
@@ -1846,6 +2065,73 @@ class CensysTests(SimpleTestCase):
         self.assertTrue(any("Censys" in n for n in names))
 
 
+@override_settings(CACHES=LOCMEM, OSINT_NETLAS_KEY="netlas-key", OSINT_NETLAS_MONTHLY_LIMIT=2)
+class NetlasTests(SimpleTestCase):
+    def setUp(self):
+        from django.core.cache import cache
+        cache.clear()
+
+    def test_summary_retains_only_bounded_public_context(self):
+        summary = netlas.summarize({"ip": "203.0.113.5", "ptr": ["host.example"], "ports": [443],
+                                    "geo": {"country": "Germany", "city": "Berlin"},
+                                    "privacy": {"vpn": False, "proxy": True, "tor": False},
+                                    "whois": {"registrant": "must not be retained"}})
+        self.assertEqual(summary["ports"], [443])
+        self.assertNotIn("whois", summary)
+
+    def test_request_uses_public_indices_and_cache(self):
+        import httpx
+        calls = []
+
+        def handler(request):
+            calls.append(request)
+            return httpx.Response(200, json={"ip": "203.0.113.5", "ports": [443]})
+
+        async def go():
+            async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+                return await netlas.host(client, "203.0.113.5"), await netlas.host(client, "203.0.113.5")
+
+        first, second = asyncio.run(go())
+        self.assertEqual(first["ports"], [443])
+        self.assertTrue(second["aus_zwischenspeicher"])
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(calls[0].headers["Authorization"], "Bearer netlas-key")
+        self.assertEqual(calls[0].url.params["public_indices_only"], "true")
+
+
+@override_settings(CACHES=LOCMEM, OSINT_SHODAN_KEY="shodan-key", OSINT_SHODAN_MONTHLY_LIMIT=2)
+class ShodanHostTests(SimpleTestCase):
+    def setUp(self):
+        from django.core.cache import cache
+        cache.clear()
+
+    def test_summary_limits_banner_and_keeps_timestamp(self):
+        summary = shodan.summarize({"ip_str": "203.0.113.5", "hostnames": ["host.example"], "ports": [443],
+                                    "last_update": "2026-10-10T10:00:00.000000", "data": [
+                                        {"port": 443, "transport": "tcp", "product": "nginx", "timestamp": "2026-10-10T10:00:00.000000", "data": "x" * 500}
+                                    ]})
+        self.assertEqual(len(summary["dienste"][0]["banner"]), 160)
+        self.assertEqual(summary["letzte_aktualisierung"], "2026-10-10T10:00:00.000000")
+
+    def test_request_is_cached_and_key_is_not_in_source_result(self):
+        import httpx
+        calls = []
+
+        def handler(request):
+            calls.append(request)
+            return httpx.Response(200, json={"ip_str": "203.0.113.5", "ports": [443]})
+
+        async def go():
+            async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+                return await shodan.host(client, "203.0.113.5"), await shodan.host(client, "203.0.113.5")
+
+        first, second = asyncio.run(go())
+        self.assertEqual(first["ports"], [443])
+        self.assertTrue(second["aus_zwischenspeicher"])
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(calls[0].url.params["key"], "shodan-key")
+
+
 
 class HistorySourceTests(SimpleTestCase):
     DAY = __import__("datetime").date(2026, 6, 15)
@@ -1893,7 +2179,10 @@ class HistorySourceTests(SimpleTestCase):
     def test_passive_dns_for_host_gives_address_at_day_and_timeline(self):
         result = history.summarize_passive(self.ROWS[:2], self.DAY, "host")
         self.assertEqual([r["wert"] for r in result["zum_stichtag"]], ["1.2.3.4"])
+        self.assertEqual(result["zum_stichtag"][0]["von_zeit"], "2026-06-01T00:00:00")
+        self.assertEqual(result["zum_stichtag"][0]["bis_zeit"], "2026-06-20T00:00:00")
         self.assertEqual([a["wert"] for a in result["alle_adressen"]], ["1.2.3.4", "1.2.3.5"])  # Wechsel sichtbar
+        self.assertEqual(result["alle_adressen"][0]["von_zeit"], "2026-06-01T00:00:00")
         self.assertEqual(history.address_at(result), "1.2.3.4")
 
     def test_passive_dns_for_ip_lists_names_and_falls_back_to_nearest(self):
@@ -2171,7 +2460,7 @@ class OtxReputationRequestTests(SimpleTestCase):
 
 
 class CopyButtonTests(TestCase):
-    def test_every_source_and_the_whole_list_have_copy_buttons(self):
+    def test_every_source_and_the_whole_list_have_copy_and_toggle_buttons(self):
         user = get_user_model().objects.create_user("anna", password="x")
         lookup = Lookup.objects.create(
             kind="ip", query="8.8.8.8", created_by=user, status=Lookup.Status.DONE,
@@ -2180,6 +2469,7 @@ class CopyButtonTests(TestCase):
         self.client.force_login(user)
         page = self.client.get(reverse("lookups:detail", args=[lookup.pk]))
         self.assertContains(page, "data-copy-all")
+        self.assertContains(page, "data-toggle-sources")
         self.assertContains(page, "data-copy-source", count=2)
         self.assertContains(page, '<pre class="raw">')
         self.assertContains(page, 'class="error raw"')  # auch Fehlermeldungen lassen sich kopieren

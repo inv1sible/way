@@ -31,7 +31,7 @@ def ui_text(german, english):
 
 
 def _start(request, kind, query, active=False, active_ports=None, active_timeout=8, active_profile=None,
-           enrichment_of=None, scan=False, as_of=None, note=None):
+           enrichment_of=None, scan=False, as_of=None, note=None, email_public_web=False, phone_public_web=False):
     # Direkter Kontakt zu fremden Zielen nur für Admins: Er geht von der Adresse dieses Servers aus.
     if note is None and request.user.is_authenticated:
         previous = Lookup.objects.filter(created_by=request.user, kind=kind, query=query).exclude(note="").first()
@@ -41,7 +41,8 @@ def _start(request, kind, query, active=False, active_ports=None, active_timeout
         active_probe=bool(active and request.user.is_staff), port_scan=bool(scan and request.user.is_staff),
         active_ports=active_ports or fritzbox.DEFAULT_PORTS, active_timeout=active_timeout,
         active_profile=active_profile or Lookup.ActiveProfile.FRITZBOX, enrichment_of=enrichment_of,
-        as_of=as_of, note=note or "",
+        as_of=as_of, note=note or "", email_public_web=bool(kind == "email" and email_public_web),
+        phone_public_web=bool(kind == "phone" and phone_public_web),
     )
     transaction.on_commit(lambda: run_lookup.delay(lookup.pk))
     return redirect("lookups:detail", pk=lookup.pk)
@@ -92,13 +93,13 @@ def index(request):
         as_of = parse_as_of(request.POST.get("asof", ""))
     except ValueError as exc:
         return _index(request, q=query, error=str(exc))
-    scan = request.POST.get("scan") == "on" and request.user.is_staff and kind != "phone"
+    scan = request.POST.get("scan") == "on" and request.user.is_staff and kind in {"ip", "host"}
     if scan and not ownership.is_owned(kind, value):
         return _index(request, q=query, error=ui_text(
             f"„{value}“ ist nicht als eigenes System eingetragen. Der Portscan ist nur für eigene Systeme erlaubt.",
             f"“{value}” is not registered as an owned system. Port scans are allowed only for owned systems.",
         ))
-    active = request.POST.get("active") == "on" and request.user.is_staff and kind != "phone"
+    active = request.POST.get("active") == "on" and request.user.is_staff and kind in {"ip", "host"}
     active_ports, active_timeout = fritzbox.DEFAULT_PORTS, fritzbox.DEFAULT_TIMEOUT
     if active:
         if not ownership.is_owned(kind, value):
@@ -117,7 +118,9 @@ def index(request):
         except ValueError as exc:
             return _index(request, q=query, error=str(exc))
     return _start(request, kind, value, active=active, active_ports=active_ports,
-                  active_timeout=active_timeout, scan=scan, as_of=as_of)
+                  active_timeout=active_timeout, scan=scan, as_of=as_of,
+                  email_public_web=request.POST.get("email_public_web") == "on",
+                  phone_public_web=request.POST.get("phone_public_web") == "on")
 
 
 @require_POST
@@ -306,8 +309,6 @@ def _other_runs(request, lookup):
             continue
         if previous is not None:
             run.changes = historie.compare(previous.sources, run.sources)
-            if previous.risk and run.risk and previous.risk != run.risk:
-                run.changes.insert(0, ("risiko", previous.risk, run.risk))
         previous = run
     return [run for run in reversed(runs) if run.pk != lookup.pk]
 
@@ -403,11 +404,67 @@ def own_target(request, pk):
 @require_POST
 def rerun(request, pk):
     lookup = get_object_or_404(_visible(request), pk=pk)
+    # A rerun is passive unless the user explicitly selects an active option again.
+    # Do not silently repeat direct network access from an earlier run.
+    active = scan = False
+    ports, timeout, profile = fritzbox.DEFAULT_PORTS, fritzbox.DEFAULT_TIMEOUT, Lookup.ActiveProfile.FRITZBOX
+    if lookup.kind in {"ip", "host"}:
+        try:
+            as_of = parse_as_of(request.POST.get("asof", "")) if "asof" in request.POST else lookup.as_of
+        except ValueError as exc:
+            messages.error(request, str(exc))
+            return redirect("lookups:detail", pk=lookup.pk)
+        active = request.POST.get("active") == "on"
+        scan = request.POST.get("scan") == "on"
+        if active or scan:
+            if request.POST.get("authorization") != "confirmed":
+                messages.error(request, ui_text(
+                    "Bitte bestätige die Berechtigung für jede aktive Prüfung erneut.",
+                    "Confirm authorization again for every active check.",
+                ))
+                return redirect("lookups:detail", pk=lookup.pk)
+            if not request.user.is_staff or not ownership.is_owned(lookup.kind, lookup.query):
+                messages.error(request, ui_text(
+                    "Aktive Prüfungen und Portscans sind nur für als eigene Systeme eingetragene Ziele erlaubt.",
+                    "Active checks and port scans are allowed only for targets registered as owned systems.",
+                ))
+                return redirect("lookups:detail", pk=lookup.pk)
+            if lookup.kind == "host" and not ownership.allowed_asns(lookup.kind, lookup.query):
+                messages.error(request, ui_text(
+                    "Für aktive Hostnamen müssen erlaubte Origin-ASNs beim eigenen System hinterlegt sein.",
+                    "Active hostname checks require allowed origin ASNs on the owned system.",
+                ))
+                return redirect("lookups:detail", pk=lookup.pk)
+        if active:
+            if lookup.kind == "ip" and not fritzbox.public_address(lookup.query):
+                messages.error(request, ui_text(
+                    "Die leichte aktive Prüfung ist nur für öffentlich routbare Ziele erlaubt.",
+                    "The active-light check is allowed only for publicly routable targets.",
+                ))
+                return redirect("lookups:detail", pk=lookup.pk)
+            profile = request.POST.get("profile", Lookup.ActiveProfile.FRITZBOX)
+            defaults = {
+                Lookup.ActiveProfile.GENERIC_ROUTER: [443],
+                Lookup.ActiveProfile.FRITZBOX: fritzbox.DEFAULT_PORTS,
+                Lookup.ActiveProfile.SPEEDPORT: [80, 443],
+            }
+            if profile not in defaults:
+                messages.error(request, ui_text("Ungültiges Prüfprofil.", "Invalid probe profile."))
+                return redirect("lookups:detail", pk=lookup.pk)
+            try:
+                ports = fritzbox.parse_ports(request.POST.get("active_ports"), default=defaults[profile])
+                timeout = fritzbox.parse_timeout(request.POST.get("active_timeout"))
+            except ValueError as exc:
+                messages.error(request, str(exc))
+                return redirect("lookups:detail", pk=lookup.pk)
+    else:
+        as_of = lookup.as_of
     return _start(
-        request, lookup.kind, lookup.query, active=lookup.active_probe,
-        active_ports=lookup.active_ports, active_timeout=lookup.active_timeout,
-        active_profile=lookup.active_profile,
-        scan=lookup.port_scan, as_of=lookup.as_of, note=lookup.note,
+        request, lookup.kind, lookup.query, active=active,
+        active_ports=ports, active_timeout=timeout, active_profile=profile,
+        scan=scan, as_of=as_of, note=lookup.note,
+        email_public_web=request.POST.get("email_public_web") == "on" if lookup.kind == "email" else lookup.email_public_web,
+        phone_public_web=request.POST.get("phone_public_web") == "on" if lookup.kind == "phone" else lookup.phone_public_web,
     )
 
 

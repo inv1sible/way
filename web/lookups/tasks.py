@@ -39,6 +39,8 @@ async def _collect_with_progress(lookup, active=False, scan=False, scan_asns=Non
         active_ports=lookup.active_ports, active_timeout=lookup.active_timeout,
         active_profile=lookup.active_profile,
         scan=scan, scan_asns=scan_asns, active_asns=active_asns, active_dns_name=active_dns_name, as_of=lookup.as_of,
+        email_public_web=lookup.email_public_web,
+        phone_public_web=lookup.phone_public_web,
     )
 
 
@@ -70,12 +72,12 @@ def run_lookup(lookup_id):
             sources.append({"source": historie.HISTORY_SOURCE, "ok": True, "data": past})
         _update(lookup, status=Lookup.Status.ANALYZING, sources=sources)
         report = llm.write_report(lookup.kind, lookup.query, sources, as_of=lookup.as_of)
-        report, risk = llm.apply_risk_floor(report, llm.extract_risk(report), sources)
+        report = llm.append_web_findings(report, sources)
         _update(
             lookup,
             status=Lookup.Status.DONE,
             report_md=report,
-            risk=risk,
+            risk="",
             finished_at=timezone.now(),
         )
     except Exception as exc:

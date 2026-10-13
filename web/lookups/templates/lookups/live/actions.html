@@ -9,8 +9,6 @@
   {% endif %}
   <a class="icon" href="{% url 'lookups:pdf' lookup.pk %}?language={{ LANGUAGE_CODE }}" title="{% ui 'Als PDF herunterladen' 'Download as PDF' %}" aria-label="{% ui 'Als PDF herunterladen' 'Download as PDF' %}">
     <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/><path d="M12 15V3"/></svg></a>
-  <form method="post" action="{% url 'lookups:rerun' lookup.pk %}">{% csrf_token %}
-    <button class="icon" title="{% ui 'Erneut analysieren' 'Run analysis again' %}" aria-label="{% ui 'Erneut analysieren' 'Run analysis again' %}">
-      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg></button>
-  </form>
+  <button type="button" class="icon" popovertarget="rerun-pop" title="{% ui 'Erneut analysieren' 'Run analysis again' %}" aria-label="{% ui 'Erneut analysieren' 'Run analysis again' %}">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg></button>
 {% endif %}

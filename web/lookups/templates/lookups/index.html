@@ -4,10 +4,21 @@
 {% if shared %}<p class="muted">{% ui 'Geteilt' 'Shared' %}: „{{ shared|truncatechars:160 }}“</p>{% endif %}
 <form method="post" action="{% url 'lookups:index' %}" id="analyze">{% csrf_token %}
   <div class="search">
-    <input name="q" value="{{ q }}" placeholder="{% ui 'Rufnummer, IP-Adresse oder Hostname, z. B. 030 1234567 oder 203.0.113.7' 'Phone number, IP address or hostname, e.g. +49 30 1234567 or 203.0.113.7' %}"
+    <input name="q" value="{{ q }}" placeholder="{% ui 'E-Mail, Rufnummer, IP-Adresse oder Hostname' 'Email, phone number, IP address or hostname' %}"
            autocomplete="off" required>
   </div>
   <div class="opts">
+  <div data-options="email">
+  <label class="check opt"><input type="checkbox" name="email_public_web">
+    <span>{% ui 'Öffentliche Web-Referenzen: exakte Adresse in Suchergebnissen prüfen' 'Public web references: check the exact address in search results' %}
+      <span class="muted">({% ui 'höchstens zwei Suchen; keine Ergebnis-Webseiten öffnen oder crawlen; keine Messenger-, Personenverzeichnis- oder Leak-Suche' 'at most two searches; no result-page fetching or crawling; no messenger, people-directory, or leak search' %})</span></span></label>
+  </div>
+  <div data-options="phone">
+  <label class="check opt"><input type="checkbox" name="phone_public_web">
+    <span>{% ui 'Öffentliche Web-Recherche starten' 'Run public web search' %}
+      <span class="muted">({% ui 'höchstens drei SearXNG-Suchen; nur Suchergebnis-Metadaten, keine Ergebnis-Webseiten öffnen oder crawlen' 'at most three SearXNG searches; search-result metadata only, no result-page fetching or crawling' %})</span></span></label>
+  </div>
+  <div data-options="network">
   <label class="opt-date">{% ui 'Stand (optional): Rückblick auf ein Datum' 'Reference date (optional): historical view' %}
     <input type="date" name="asof" min="2000-01-01" max="{{ today }}">
     <span class="muted">{% ui 'BGP- und Passive-DNS-Historie zum Datum, dazu der Verlauf deiner früheren Analysen' 'BGP and passive-DNS history for that date, plus your previous analyses' %}</span></label>
@@ -25,6 +36,7 @@
     <span>{% ui 'Portscan (nmap, Top-1000-Ports): nur für eigene Systeme' 'Port scan (nmap, top 1,000 ports): owned systems only' %}
       <span class="muted">(<a href="{% url 'admin:lookups_ownedtarget_changelist' %}">{% ui 'Liste verwalten' 'Manage list' %}</a>)</span></span></label>
   {% endif %}
+  </div>
   </div>
   <button class="submit">{% ui 'Analysieren' 'Analyze' %}</button>
 </form>
@@ -49,12 +61,12 @@
   <thead><tr><th class="t-pick"></th><th>{% ui 'Abfrage' 'Query' %}</th><th>{% ui 'Typ' 'Type' %}</th><th>Status</th><th>{% ui 'Zeit' 'Time' %}</th>{% if user.is_staff %}<th>{% ui 'Nutzer' 'User' %}</th>{% endif %}</tr></thead>
   <tbody>
   {% for l in lookups %}
-    <tr class="tile-risk-{{ l.risk|default:'none' }}" data-pick-row>
+    <tr class="tile-kind-{{ l.kind }}" data-pick-row>
       <td class="t-pick"><input type="checkbox" name="ids" value="{{ l.runs|join:',' }}" aria-label="{{ l.query }} {% ui 'auswählen' 'select' %}"
           {% if l.is_running %}disabled title="{% ui 'Läuft noch, kann erst danach gelöscht werden' 'Still running; it can be deleted after completion' %}"{% endif %}></td>
       <td class="t-query"><a href="{% url 'lookups:detail' l.pk %}">{{ l.query }}</a>{% if l.note %} <span class="t-note">({{ l.note }})</span>{% endif %}</td>
       <td class="t-kind">{{ l.kind|kind_label }}</td>
-      <td class="t-status">{% if l.is_running %}<span class="spinner"></span> {% endif %}{{ l.status|status_label }}{% if l.risk %} · <span class="risk risk-{{ l.risk }}">{% ui 'Risiko' 'Risk' %} {{ l.risk|risk_label }}</span>{% endif %}</td>
+      <td class="t-status">{% if l.is_running %}<span class="spinner"></span> {% endif %}{{ l.status|status_label }}</td>
       <td class="t-time muted">{{ l.created_at|ui_datetime }}{% if l.runs|length > 1 %} <span class="t-runs" title="{{ l.runs|length }} {% ui 'Analysen dieser Abfrage; frühere im Verlauf auf der Detailseite' 'analyses of this query; earlier runs are on the detail page' %}">{{ l.runs|length }}×</span>{% endif %}</td>
       {% if user.is_staff %}<td class="t-user muted">{% if l.created_by %}{{ l.created_by.email|default:l.created_by.username }}{% else %}–{% endif %}</td>{% endif %}
     </tr>

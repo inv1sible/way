@@ -29,6 +29,7 @@ def localized_report(text):
 @register.filter
 def kind_label(value):
     labels = {
+        "email": ("E-Mail-Adresse", "Email address"),
         "phone": ("Rufnummer", "Phone number"),
         "ip": ("IP-Adresse", "IP address"),
         "host": ("Hostname", "Hostname"),

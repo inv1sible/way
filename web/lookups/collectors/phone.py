@@ -435,7 +435,7 @@ async def clever_dialer(client, e164):
     return {"url": url, **parse_clever_dialer(response.text)}
 
 
-async def collect(client, e164, active=False, scan=False, as_of=None):
+async def collect(client, e164, active=False, scan=False, as_of=None, public_web=False):
     async def searches():
         # Alle Teilrecherchen teilen ein Budget und laufen nacheinander: maximal drei Anfragen.
         budget = SearchBudget()
@@ -450,10 +450,14 @@ async def collect(client, e164, active=False, scan=False, as_of=None):
         )
         return [direct, central, attribution, portals]
 
-    *direct, searched = await asyncio.gather(
+    direct = await asyncio.gather(
         run_source("Rufnummernanalyse (libphonenumber)", analyze, e164),
         run_source("Bundesnetzagentur-Maßnahmenliste", bnetza.check, client, e164),
         run_source("Clever Dialer", clever_dialer, client, e164),
-        searches(),
     )
-    return [*direct, *searched]
+    if not public_web:
+        return [*direct, {
+            "source": "Öffentliche Rufnummernrecherche (SearXNG)", "ok": True,
+            "data": {"ausgefuehrt": False, "hinweis": "Nicht ausgewählt: öffentliche Websuche nur mit ausdrücklicher Berechtigung."},
+        }]
+    return [*direct, *(await searches())]

@@ -8,6 +8,7 @@ from datetime import datetime, timezone
 
 import httpx
 from django.conf import settings
+from django.core.cache import cache
 
 
 async def otx_get(client, url):
@@ -30,6 +31,8 @@ def jobs(client, indicator, kind):
     out = [("AlienVault OTX", otx, client, indicator, kind)]
     if settings.OSINT_VIRUSTOTAL_KEY:
         out.append(("VirusTotal", virustotal, client, indicator, kind))
+        if kind == "ip":
+            out.append(("VirusTotal (historische DNS-Auflösungen)", virustotal_resolutions, client, indicator))
     if settings.OSINT_ABUSECH_KEY:
         out.append(("abuse.ch ThreatFox", threatfox, client, indicator))
         out.append(("abuse.ch URLhaus", urlhaus, client, indicator))
@@ -40,6 +43,11 @@ def jobs(client, indicator, kind):
 
 def _date(timestamp):
     return datetime.fromtimestamp(timestamp, timezone.utc).date().isoformat() if timestamp else None
+
+
+def _timestamp(timestamp):
+    """VirusTotal resolution timestamps are Unix seconds; preserve their full UTC precision."""
+    return datetime.fromtimestamp(timestamp, timezone.utc).isoformat().replace("+00:00", "Z") if timestamp else None
 
 
 async def virustotal(client, indicator, kind):
@@ -63,6 +71,29 @@ async def virustotal(client, indicator, kind):
         if result.get("category") in ("malicious", "suspicious")
     ][:15]
     return data
+
+
+async def virustotal_resolutions(client, ip):
+    """A small, cached history of observed IP-to-domain resolutions, not a claim of device identity."""
+    cached = await cache.aget(f"vt:resolutions:{ip}")
+    if cached is not None:
+        return {**cached, "aus_zwischenspeicher": True}
+    response = await client.get(
+        f"https://www.virustotal.com/api/v3/ip_addresses/{ip}/resolutions",
+        params={"limit": 20}, headers={"x-apikey": settings.OSINT_VIRUSTOTAL_KEY},
+    )
+    if response.status_code == 404:
+        result = {"aufloesungen": [], "hinweis": "VirusTotal hat keine historischen DNS-Auflösungen."}
+    else:
+        response.raise_for_status()
+        result = {"aufloesungen": [
+            {"host_name": item.get("attributes", {}).get("host_name"),
+             "beobachtet_am": _timestamp(item.get("attributes", {}).get("date"))}
+            for item in response.json().get("data", [])[:20]
+            if item.get("attributes", {}).get("host_name")
+        ], "hinweis": "Historische Drittbeobachtungen; keine Zuordnung zu einem Gerät oder Anschlussinhaber."}
+    await cache.aset(f"vt:resolutions:{ip}", result, 24 * 3600)
+    return result
 
 
 async def otx(client, indicator, kind):

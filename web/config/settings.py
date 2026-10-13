@@ -7,7 +7,17 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 
 
 def env(name, default=""):
-    return os.environ.get(name, default).strip()
+    val = os.environ.get(name)
+    if val is None or not val.strip():
+        return default
+    return val.strip()
+
+
+def env_int(name, default):
+    try:
+        return int(env(name, str(default)))
+    except (TypeError, ValueError):
+        return int(default)
 
 
 def env_list(name, default=""):
@@ -122,7 +132,7 @@ PASSWORD_RESET_TIMEOUT = 2 * 3600
 if env("EMAIL_HOST"):
     EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
     EMAIL_HOST = env("EMAIL_HOST")
-    EMAIL_PORT = int(env("EMAIL_PORT", "587"))
+    EMAIL_PORT = env_int("EMAIL_PORT", 587)
     EMAIL_HOST_USER = env("EMAIL_HOST_USER")
     EMAIL_HOST_PASSWORD = env("EMAIL_HOST_PASSWORD")
     EMAIL_USE_SSL = env("EMAIL_USE_SSL", "0") == "1"
@@ -189,6 +199,11 @@ OSINT_IPINFO_TOKEN = env("IPINFO_TOKEN")
 OSINT_CENSYS_TOKEN = env("CENSYS_TOKEN")
 OSINT_CENSYS_ORG_ID = env("CENSYS_ORG_ID")
 # Gratis-Tarif: 100 Credits im Monat; der Verbrauch je Abfrage ist nicht dokumentiert, daher vorsichtig
-OSINT_CENSYS_MONTHLY_LIMIT = int(env("CENSYS_MONTHLY_LIMIT", "50"))
+OSINT_CENSYS_MONTHLY_LIMIT = env_int("CENSYS_MONTHLY_LIMIT", 50)
+OSINT_HIBP_KEY = env("HIBP_API_KEY")
+OSINT_NETLAS_KEY = env("NETLAS_API_KEY")
+OSINT_NETLAS_MONTHLY_LIMIT = env_int("NETLAS_MONTHLY_LIMIT", 50)
+OSINT_SHODAN_KEY = env("SHODAN_API_KEY")
+OSINT_SHODAN_MONTHLY_LIMIT = env_int("SHODAN_MONTHLY_LIMIT", 50)
 OSINT_TOOLS_URL = env("TOOLS_URL", "http://tools:8000")
 OSINT_TOOLS_TOKEN = env("TOOLS_TOKEN")

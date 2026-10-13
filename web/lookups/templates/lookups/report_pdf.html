@@ -45,7 +45,6 @@
 
   <table>
     <tr><th>{% ui 'Typ' 'Type' %}</th><td>{{ lookup.kind|kind_label }}</td></tr>
-    <tr><th>{% ui 'Risikoeinschätzung' 'Risk assessment' %}</th><td>{% if lookup.risk %}<span class="risk risk-{{ lookup.risk }}">{{ lookup.risk|risk_label }}</span>{% else %}–{% endif %}</td></tr>
     {% if lookup.as_of %}<tr><th>{% ui 'Stand (Rückblick)' 'Reference date' %}</th><td>{{ lookup.as_of|ui_date }}</td></tr>{% endif %}
     <tr><th>{% ui 'Abfragestufe' 'Query mode' %}</th><td>{% ui 'passiv' 'passive' %}{% if lookup.active_probe %}, {% ui 'leicht aktiv (Berechtigung bestätigt; Ports' 'active-light (authorization confirmed; ports' %} {{ lookup.active_ports|join:", " }}){% endif %}{% if lookup.port_scan %}, {% ui 'Portscan (eigenes System)' 'port scan (owned system)' %}{% endif %}</td></tr>
     <tr><th>Status</th><td>{{ lookup.status|status_label }}</td></tr>
@@ -54,8 +53,6 @@
     <tr><th>{% ui 'Angefordert von' 'Requested by' %}</th><td>{% if lookup.created_by %}{{ lookup.created_by.email|default:lookup.created_by.username }}{% else %}–{% endif %}</td></tr>
     <tr><th>{% ui 'KI-Modell' 'AI model' %}</th><td>{{ lookup.model|default:"–" }}</td></tr>
   </table>
-
-  {% if lookup.error %}<p class="err">{% ui 'Fehler' 'Error' %}: {{ lookup.error }}</p>{% endif %}
 
   {% if lookup.report_md %}
     <h2>{% ui 'KI-Bericht' 'AI report' %}</h2>
@@ -80,9 +77,9 @@
     <h2>{% ui 'Abgefragte Quellen' 'Queried sources' %}</h2>
     <table>
       {% for s in sources %}
-        {% if s.source != "FRITZ!Box Fingerprint" or s.data.classification.likelyFritzBox %}
-        <tr><th>{{ s.source }}</th><td>{% if s.ok %}<span class="ok">{% ui 'abgefragt' 'queried' %}</span>{% else %}<span class="err">{% ui 'Fehler' 'Error' %}: {{ s.error }}</span>{% endif %}</td></tr>
-        {% endif %}
+        {% if s.ok %}{% if s.source != "FRITZ!Box Fingerprint" or s.data.classification.likelyFritzBox %}
+        <tr><th>{{ s.source }}</th><td><span class="ok">{% ui 'abgefragt' 'queried' %}</span></td></tr>
+        {% endif %}{% endif %}
       {% endfor %}
     </table>
 

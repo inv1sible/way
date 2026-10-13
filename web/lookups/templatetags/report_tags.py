@@ -38,7 +38,7 @@ def pretty_json(value):
 
 # Nur Websuche-Quellen: andere Quellen (z. B. URLhaus) enthalten Schadsoftware-URLs, die nicht als
 # klickbare Links erscheinen dürfen.
-SEARCH_SOURCES = ("Websuche", "Stammnummernabgleich", "Spam-Portale")
+SEARCH_SOURCES = ("Websuche", "Stammnummernabgleich", "Spam-Portale", "Öffentliche Web-Referenzen")
 
 
 @register.filter
@@ -56,7 +56,10 @@ def fundstellen(sources):
                 url = hit.get("url") or ""
                 if url.startswith(("https://", "http://")) and url not in seen:
                     seen.add(url)
-                    hits.append({**hit, "quelle": source["source"]})
+                    # E-Mail-Referenzen heißen aus Datenschutzgründen intern "fundstelle";
+                    # die gemeinsame Anzeige verwendet ansonsten das ältere Feld "auszug".
+                    hits.append({**hit, "auszug": hit.get("auszug") or hit.get("fundstelle"),
+                                 "quelle": source["source"]})
     return hits
 
 
