@@ -11,7 +11,7 @@ containers receive it. Availability and free allowances depend on the provider; 
 | libphonenumber | – | Country, area code, type such as mobile, landline, or premium rate, and original carrier |
 | German Federal Network Agency measures | – | Published measures against the number, such as disconnection or billing prohibition |
 | Clever Dialer | – | Community ratings and spam classification |
-| Public web search through SearXNG | Explicit user option | Up to three searches using common number formats; results must actually contain the number; result pages are never opened or crawled |
+| Public web search through SearXNG | Explicit user option | Up to three searches using common number formats; number-verified findings and other returned results appear separately in the report; result pages are never opened or crawled |
 | Main-number detection | – | Limited checks of plausible German landline organization prefixes, assuming four or five extension digits and exceptionally six; derived queries are neither stored nor highlighted, and published organization numbers remain separate from the specific extension |
 | Spam directories and phone books | – | Targeted searches of known rating and directory sites |
 
@@ -22,7 +22,20 @@ Email analysis uses only exact-address queries and preserves the configured sour
 | Source | Key | Data |
 |---|---|---|
 | Have I Been Pwned v3 | `HIBP_API_KEY` | Published breach metadata for the exact address, capped and cached for 24 hours; no pastes, passwords, messenger/social-account lookups, or domain enumeration |
-| Public web references via SearXNG | Explicit user option | Up to two exact-address searches; retains matching public result metadata, does not open or crawl result pages, excludes messenger, people-directory, paste, and leak domains, and may include a public professional-profile snippet |
+| Public web references via SearXNG and Google Programmable Search | User-selected web search; optional `GOOGLE_CSE_API_KEY` and `GOOGLE_CSE_ID` | SearXNG receives the complete quoted address with `language=all` and `categories=general`. Raw data records the sent and echoed query; results identify their engines. Optional Google API requests also set `exactTerms`. Only results whose URL, title or snippet contains the full address become documented references; other results remain available for review. No domain-category exclusions. Result pages are not fetched. |
+
+Search-engine syntax expresses a request, not a guarantee that punctuation is indexed literally. Bing's
+SearXNG integration has a documented history of returning unrelated results even for quoted queries
+([upstream issue](https://github.com/searxng/searxng/issues/4964)). CAPTCHAs, HTTP 403 and rate limits are
+provider failures, not evidence that the address has no public references. Direct search links in the
+web-findings panel use the same full address through the user's browser; Google additionally uses Verbatim mode.
+
+The optional Google connector uses the [Custom Search JSON API](https://developers.google.com/custom-search/v1/overview),
+which is closed to new customers and is scheduled to end on January 1, 2027. Existing customers need both their
+API key and Programmable Search Engine ID; the engine's configured search scope still applies. This is distinct
+from SearXNG's built-in engine named `google cse`, which does not use these WAY environment variables.
+WAY supplies the full address in both `q` and [`exactTerms`](https://developers.google.com/custom-search/v1/reference/rest/v1/cse/list).
+API responses are cached for 24 hours. The API is optional and does not make SearXNG's other engines more reliable.
 
 A breach exposure does not establish the identity of a person, ownership of an account, or a current compromise.
 Use it to reset affected passwords, enable MFA, and review the affected service.
@@ -53,6 +66,7 @@ Use it to reset affected passwords, enable MFA, and review the affected service.
 
 Selecting a reference date additionally adds BGP history from RIPEstat and passive DNS from AlienVault OTX.
 With `VIRUSTOTAL_KEY`, IP analyses also include up to 20 cached historical IP-to-hostname observations on every run.
+Timestamped VirusTotal and Passive-DNS observations are shown in the report area and PDF whenever the source returned data.
 
 ## Hostnames
 
@@ -71,6 +85,7 @@ web metadata, and the selected router profile. Port scan can add Nmap for an aut
 | IPinfo.io Lite | <https://ipinfo.io/signup> | The free Lite API requires a token and returns country-level location plus basic ASN data. WAY sends the token in an authorization header, not in the URL. IPinfo.io attribution is retained in every raw result. |
 | Censys | <https://platform.censys.io/> | Create a personal access token under Account → API. The free plan includes 100 credits/month. Leave `CENSYS_ORG_ID` empty for an individual free account; otherwise use the organization UUID, not its name. `CENSYS_MONTHLY_LIMIT` caps calls. |
 | Have I Been Pwned | <https://haveibeenpwned.com/API/V3> | A paid API key is required for exact email breach checks. Use only with ownership or explicit authorization; HIBP domain search additionally requires verified domain control. |
+| Google Custom Search JSON API (legacy) | <https://developers.google.com/custom-search/v1/overview> | Existing customers only; configure both `GOOGLE_CSE_API_KEY` and `GOOGLE_CSE_ID`. Closed to new customers; scheduled discontinuation January 1, 2027. |
 | Shodan | <https://developer.shodan.io/api> | Optional Host API key. `SHODAN_MONTHLY_LIMIT` caps calls; InternetDB remains available without a key. |
 | Netlas | <https://docs.netlas.io/api-reference/> | Optional Host Info key. WAY uses only the public index and a minimal field set; `NETLAS_MONTHLY_LIMIT` caps calls. |
 | AlienVault OTX | <https://otx.alienvault.com/> | Optional key for higher limits |

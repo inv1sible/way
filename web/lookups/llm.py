@@ -7,7 +7,7 @@ from datetime import date
 import httpx
 from django.conf import settings
 
-from .templatetags.report_tags import fundstellen
+from .templatetags.report_tags import fundstellen, returned_search_results
 
 MAX_DATA_CHARS = 15000
 SOURCE_CHARS = 2500  # je Quelle, damit eine ausführliche Quelle die anderen nicht verdrängt
@@ -87,7 +87,12 @@ def build_prompt(kind, query, sources, as_of=None):
             )
         ):
             continue
-        text = json.dumps(source, ensure_ascii=False, separators=(",", ":"), default=str)
+        prompt_source = source
+        if source.get("source") in {"Websuche (SearXNG)", "Öffentliche Web-Referenzen (SearXNG)"} and isinstance(source.get("data"), dict):
+            # Nur verifizierte Fundstellen gehören in die KI-Zuordnung.
+            prompt_source = {**source, "data": {key: value for key, value in source["data"].items()
+                                                   if key not in {"suchergebnisse", "suchergebnisse_zur_pruefung"}}}
+        text = json.dumps(prompt_source, ensure_ascii=False, separators=(",", ":"), default=str)
         cap = SEARCH_SOURCE_CHARS if source["source"].startswith(("Websuche", "Spam-Portale")) else SOURCE_CHARS
         parts.append(text if len(text) <= cap else text[:cap] + "…(gekürzt)")
     data = "[" + ",\n".join(parts) + "]"
@@ -106,13 +111,13 @@ def append_web_findings(report, sources):
     avoids losing a concrete result when the language-model summary is short or the source payload hits its budget.
     """
     hits = fundstellen(sources)[:MAX_REPORT_WEB_FINDINGS]
-    if not hits:
+    returned = returned_search_results(sources)[:MAX_REPORT_WEB_FINDINGS]
+    if not hits and not returned:
         return report
 
-    def lines(language):
-        heading = "## Belegte Web-Fundstellen" if language == "de" else "## Documented web findings"
+    def entries(items, heading):
         output = [heading]
-        for hit in hits:
+        for hit in items:
             def text(value, limit):
                 value = " ".join(str(value or "").split())[:limit]
                 return value.replace("\\", "\\\\").replace("[", "\\[").replace("]", "\\]")
@@ -120,11 +125,21 @@ def append_web_findings(report, sources):
             title = text(hit.get("titel") or hit.get("url"), 200)
             snippet = text(hit.get("auszug"), 400)
             source = str(hit.get("quelle") or "")[:120]
-            line = f"- {title} — {hit.get('url')} [{source}]"
+            line = f"- [{title}]({hit.get('url')}) [{source}]"
             if snippet:
                 line += f"\n  {snippet}"
             output.append(line)
         return "\n".join(output)
+
+    def lines(language):
+        output = []
+        if hits:
+            output.append(entries(hits, "## Belegte Web-Fundstellen" if language == "de"
+                                  else "## Documented web findings"))
+        if returned:
+            output.append(entries(returned, "## Weitere SearXNG-Suchergebnisse" if language == "de"
+                                  else "## Additional SearXNG search results"))
+        return "\n\n".join(output)
 
     german, english = lines("de"), lines("en")
     marker = "\n# English"

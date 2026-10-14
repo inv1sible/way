@@ -1,23 +1,31 @@
 # Who Are You (WAY)
 
-A self-hosted OSINT tool: enter an explicitly authorized email address, phone number, IP address, or hostname and receive a report with a risk
-assessment. Data is collected without AI from free sources such as registries, DNS, reputation services, and web
-search. A local language model provided through [Ollama](https://ollama.com) summarizes the findings. Nothing leaves
-your own server except the requests sent to those sources.
+A self-hosted OSINT tool for investigating email addresses, phone numbers, IP addresses, and hostnames.
+WAY collects evidence from registries, DNS, public web search, reputation services, and optional API providers.
+A local language model provided through [Ollama](https://ollama.com) produces German and English reports.
+Source responses remain available for inspection, with links to public findings and timestamped DNS history.
+Analysis data stays on your server except for queries sent to the selected providers and links opened in your browser.
 
 - **Phone numbers:** country, area code, carrier, measures published by the German Federal Network Agency,
   community ratings, and web references through a self-hosted SearXNG instance.
-- **Email addresses:** optional Have I Been Pwned breach metadata for addresses the user owns or is explicitly
-  authorized to check, plus an opt-in, bounded exact-address public-web-reference search. It does not search people,
-  accounts, social networks, messengers, passwords, or pastes.
+- **Email addresses:** public web searches submit the complete quoted address, retain returned results and engine
+  attribution for review, and include directly supported references in reports. Direct browser links offer the same
+  full-address search, including Google Verbatim. Optional Have I Been Pwned provides breach metadata.
 - **IP addresses and hostnames:** network owner, location, and ASN context from IPinfo.io, DNS, reputation data
   from VirusTotal, AbuseIPDB, CrowdSec, GreyNoise, AlienVault OTX, abuse.ch, and Spamhaus, plus bounded passive
   internet-scan data from Shodan, Censys, and optionally Netlas.
   TLS certificates, web headers, and port scans are optionally available for registered owned systems.
 - **History:** repeated analyses of the same query are grouped and compared for changed addresses, ports,
-  reputation, and risk. A historical date can optionally add BGP and passive-DNS history.
+  reputation, and risk. A historical date can optionally add BGP and passive-DNS history. Available historical DNS
+  observations appear in the detail page and PDF with readable dates, times, and source attribution.
 - **Interface:** German and English, installable as a mobile PWA with a share target, live progress, PDF export,
   notes, and invitation-based multi-user support.
+
+Public web search depends on the upstream engines available to the server. Quoted queries are forwarded intact,
+but blocks, CAPTCHAs, parser failures, and irrelevant provider responses can reduce coverage. The raw data records
+the requested query and SearXNG's echoed query; an empty result is not proof that no public reference exists.
+The optional Google Custom Search JSON API connector supports existing customers only and is scheduled to end on
+January 1, 2027; see [Data sources](docs/quellen.md#email-addresses).
 
 ## Quick start
 
@@ -54,7 +62,7 @@ docker compose run --rm --no-deps -e TOOLS_TOKEN=x tools python -m unittest -v
 
 ## Legal notice
 
-WAY is intended for investigating unknown callers and systems you own or are explicitly authorized to test.
+WAY supports public-source research into email addresses, phone numbers, IP addresses, and hostnames.
 Active requests such as TLS, web metadata, and port scans against third-party systems may be unlawful in some
 jurisdictions. Port scanning is therefore restricted to registered owned systems. The terms of service of every
 data provider continue to apply.

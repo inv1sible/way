@@ -192,10 +192,10 @@ class SearchBudget:
         return {"maximal": self.maximum, "verwendet": self.used, "verbleibend": self.maximum - self.used}
 
 
-async def _search_all(client, queries, variants, limit, meta, budget=None):
+async def _search_all(client, queries, variants, limit, meta, budget=None, keep_returned=False):
     """Fragt nacheinander ab und behält nur Treffer, in denen die Nummer wirklich vorkommt.
     queries: Liste von (Suchbegriff, Seite, Bedingung); Bedingung erhält die bisherigen Treffer."""
-    seen, hits, errors, asked = set(), [], [], 0
+    seen, returned_seen, hits, returned, errors, asked = set(), set(), [], [], [], 0
     for query, page, condition in queries:
         if condition and not condition(hits):
             continue
@@ -215,11 +215,16 @@ async def _search_all(client, queries, variants, limit, meta, budget=None):
             errors.append(f"{query}: {type(exc).__name__}")
             continue
         for hit in batch:
+            if keep_returned and hit["url"] not in returned_seen:
+                returned_seen.add(hit["url"])
+                returned.append(hit)
             if hit["url"] not in seen and mentions_number(hit, variants):
                 seen.add(hit["url"])
                 hits.append(hit)
     if errors and len(errors) == asked:
         raise RuntimeError("Websuche nicht erreichbar: " + "; ".join(errors))
+    if keep_returned:
+        return hits[:limit], returned[:limit]
     return hits[:limit]
 
 
@@ -245,8 +250,9 @@ async def web_search(client, e164, budget=None):
         # Fallback läuft ausschließlich nach einer leeren Phrasensuche; die Ergebnisfilterung
         # verlangt weiterhin die vollständige Nummer und verhindert dadurch Teiltreffer.
         queries = [queries[0], (digits, 1, lambda hits: not hits)]
-    hits = await _search_all(client, queries, variants, limit=30, meta=meta, budget=budget)
-    result = {"treffer": hits, **_coverage(meta)}
+    hits, returned = await _search_all(client, queries, variants, limit=30, meta=meta, budget=budget,
+                                       keep_returned=True)
+    result = {"treffer": hits, "suchergebnisse": returned, **_coverage(meta)}
     if budget is not None:
         result["abfragebudget"] = budget.state()
     return result

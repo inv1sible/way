@@ -1,5 +1,7 @@
 """Kleine zweisprachige UI-Helfer ohne zusätzliche Übersetzungsdateien."""
 
+from datetime import datetime, timezone as dt_timezone
+
 from django import template
 from django.utils import timezone
 from django.utils.translation import get_language
@@ -87,3 +89,25 @@ def ui_date(value):
     if not value:
         return "–"
     return value.strftime("%Y-%m-%d") if english() else value.strftime("%d.%m.%Y")
+
+
+@register.filter
+def ui_timestamp(value):
+    """Render API timestamps in the active UI language while preserving raw values in source data."""
+    if not value:
+        return "–"
+    try:
+        if isinstance(value, (int, float)):
+            instant = datetime.fromtimestamp(value, dt_timezone.utc)
+        else:
+            text = str(value)
+            if len(text) == 10:
+                parsed = datetime.strptime(text, "%Y-%m-%d")
+                return parsed.strftime("%Y-%m-%d") if english() else parsed.strftime("%d.%m.%Y")
+            instant = datetime.fromisoformat(text.replace("Z", "+00:00"))
+            if timezone.is_naive(instant):
+                instant = timezone.make_aware(instant, dt_timezone.utc)
+        local = timezone.localtime(instant)
+    except (TypeError, ValueError):
+        return str(value)
+    return local.strftime("%d %b %Y, %H:%M %Z") if english() else local.strftime("%d.%m.%Y, %H:%M %Z")

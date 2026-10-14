@@ -1,3 +1,12 @@
 {% load report_tags ui_tags i18n %}{% get_current_language as LANGUAGE_CODE %}{% if lookup.report_md %}
 <article class="card report" lang="{{ LANGUAGE_CODE }}">{{ lookup.report_md|localized_report|markdown }}</article>
-{% endif %}
+<p class="muted external-link-notice">{% ui 'Externe Links im Bericht öffnen Quellen über deine aktuelle Internetverbindung.' 'External links in the report open sources through your current Internet connection.' %}</p>
+{% endif %}{% with observations=lookup.sources|historical_dns %}{% if observations %}
+<article class="card report historical-dns">
+  <h2>{% ui 'Historische DNS-Beobachtungen' 'Historical DNS observations' %}</h2>
+  <ul>{% for observation in observations %}
+    <li><strong>{{ observation.wert }}</strong>{% if observation.typ %} ({{ observation.typ }}){% endif %}{% if observation.zeit_von %} · {{ observation.zeit_von|ui_timestamp }}{% endif %}{% if observation.zeit_bis %} – {{ observation.zeit_bis|ui_timestamp }}{% endif %}
+      <span class="muted">[{{ observation.quelle }}]</span></li>
+  {% endfor %}</ul>
+</article>
+{% endif %}{% endwith %}

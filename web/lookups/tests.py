@@ -45,7 +45,8 @@ class DetectTests(SimpleTestCase):
                 detect(raw)
 
 
-@override_settings(CACHES={"default": {"BACKEND": "django.core.cache.backends.locmem.LocMemCache"}}, OSINT_HIBP_KEY="a" * 32)
+@override_settings(CACHES={"default": {"BACKEND": "django.core.cache.backends.locmem.LocMemCache"}},
+                   OSINT_HIBP_KEY="a" * 32, OSINT_GOOGLE_CSE_API_KEY="", OSINT_GOOGLE_CSE_ID="")
 class EmailExposureTests(SimpleTestCase):
     def setUp(self):
         from django.core.cache import cache
@@ -81,6 +82,31 @@ class EmailExposureTests(SimpleTestCase):
 
         self.assertEqual(asyncio.run(go())["breaches"], [])
 
+    def test_google_cse_uses_provider_exact_terms_and_limits_results(self):
+        import httpx
+        observed = {}
+
+        def handler(request):
+            observed.update(dict(request.url.params))
+            return httpx.Response(200, json={"items": [
+                {"title": "Exact result", "link": "https://example.org/contact", "snippet": "Contact"},
+                {"title": "Public profile", "link": "https://github.com/example/contact", "snippet": "Contact"},
+            ]})
+
+        async def go():
+            async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+                with override_settings(OSINT_GOOGLE_CSE_API_KEY="test-key", OSINT_GOOGLE_CSE_ID="test-cx"):
+                    return await email.google_exact_search(client, "person@example.org")
+
+        result = asyncio.run(go())
+        self.assertEqual(observed["q"], "person@example.org")
+        self.assertEqual(observed["exactTerms"], "person@example.org")
+        self.assertEqual(observed["cx"], "test-cx")
+        self.assertEqual([item["url"] for item in result["references"]],
+                         ["https://example.org/contact", "https://github.com/example/contact"])
+        self.assertTrue(result["references"][0]["exact_phrase_required"])
+        self.assertNotIn("test-key", str(result))
+
     @override_settings(OSINT_HIBP_KEY="")
     def test_missing_key_is_capability_status(self):
         result = asyncio.run(email.collect(None, "person@example.org"))
@@ -88,9 +114,11 @@ class EmailExposureTests(SimpleTestCase):
         self.assertIn("Nicht konfiguriert", result[-1]["error"])
 
     def test_public_web_keeps_exact_public_search_references_only(self):
-        async def fake_searx(client, query, limit=10, pageno=1, meta=None):
+        queries = []
+
+        async def fake_searx(client, query, limit=10, pageno=1, meta=None, language="de"):
             meta.update({"ok": {"bing"}, "gestoert": {"qwant": "CAPTCHA"}})
-            self.assertEqual(query, '"person@example.org"')
+            queries.append((query, language))
             return [
                 {"url": "https://example.org/contact", "titel": "Contact", "auszug": "person@example.org"},
                 {"url": "https://linkedin.com/in/person", "titel": "person@example.org", "auszug": ""},
@@ -99,12 +127,47 @@ class EmailExposureTests(SimpleTestCase):
 
         with mock.patch.object(email.search, "searx", fake_searx):
             result = asyncio.run(email.public_web_search(None, "person@example.org"))
+        self.assertEqual(queries, [('"person@example.org"', "all")])
         self.assertEqual(result["references"], [
             {"url": "https://example.org/contact", "titel": "Contact", "fundstelle": "person@example.org"},
             {"url": "https://linkedin.com/in/person", "titel": "person@example.org", "fundstelle": None},
         ])
+        self.assertEqual([item["url"] for item in result["suchergebnisse_zur_pruefung"]], [
+            "https://example.org/contact", "https://linkedin.com/in/person", "https://example.net",
+        ])
         self.assertEqual(result["suchmaschinen_mit_ergebnissen"], ["bing"])
-        self.assertIn("nicht automatisiert geöffnet", result["grenzen"][0])
+        self.assertEqual(result["suchmaschinen"], ["bing", "qwant"])
+        self.assertNotIn("grenzen", result)
+        from urllib.parse import parse_qs, urlsplit
+        for link in result["suchlinks"]:
+            self.assertEqual(parse_qs(urlsplit(link["url"]).query)["q"], ['"person@example.org"'])
+
+    def test_complete_email_survives_http_encoding_and_results_keep_engine_attribution(self):
+        import httpx
+        requests = []
+        address = "person+tag@example.org"
+        query = f'"{address}"'
+
+        def handler(request):
+            requests.append(dict(request.url.params))
+            return httpx.Response(200, json={"query": query, "results": [
+                {"title": "Contact", "url": "https://github.com/example/contact", "content": address,
+                 "engines": ["google cse", "bing"]},
+                {"title": "Other person", "url": "https://example.net", "content": "person", "engines": ["bing"]},
+            ]})
+
+        async def go():
+            async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+                return await email.public_web_search(client, address)
+
+        result = asyncio.run(go())
+        self.assertEqual(requests[0]["q"], query)
+        self.assertEqual(requests[0]["language"], "all")
+        self.assertEqual(requests[0]["categories"], "general")
+        self.assertEqual(result["searxng_empfangene_suchanfrage"], query)
+        self.assertEqual(result["suchergebnisse_zur_pruefung"][0]["suchmaschinen"], ["bing", "google cse"])
+        self.assertEqual(len(result["suchergebnisse_zur_pruefung"]), 2)
+        self.assertEqual([ref["url"] for ref in result["references"]], ["https://github.com/example/contact"])
 
     def test_public_web_source_runs_only_when_explicitly_requested(self):
         async def fake_run_source(name, fn, *args):
@@ -115,6 +178,7 @@ class EmailExposureTests(SimpleTestCase):
             enabled = asyncio.run(email.collect(None, "person@example.org", public_web=True))
         self.assertFalse(any(item["source"] == email.PUBLIC_WEB_SOURCE for item in disabled))
         self.assertTrue(any(item["source"] == email.PUBLIC_WEB_SOURCE for item in enabled))
+        self.assertFalse(any(item["source"] == "E-Mail-Prüfgrenze" for item in enabled))
 
 
 @override_settings(CACHES={"default": {"BACKEND": "django.core.cache.backends.locmem.LocMemCache"}}, OSINT_VIRUSTOTAL_KEY="vt-key")
@@ -425,6 +489,49 @@ class ReportTests(SimpleTestCase):
         self.assertIn("## Belegte Web-Fundstellen", output)
         self.assertIn("## Documented web findings", output)
         self.assertEqual(output.count("https://example.org/contact"), 2)
+        self.assertIn("[Organisation](https://example.org/contact)", output)
+
+    def test_returned_phone_search_results_are_added_to_both_report_languages(self):
+        report = "# Deutsch\n## Kurzfazit\nFund.\n\n# English\n## Executive summary\nFinding."
+        sources = [{"source": "Websuche (SearXNG)", "ok": True, "data": {"treffer": [], "suchergebnisse": [{
+            "titel": "Suchtreffer", "url": "https://example.org/result", "auszug": "Ergebnistext",
+        }]}}]
+        output = llm.append_web_findings(report, sources)
+        self.assertIn("## Weitere SearXNG-Suchergebnisse", output)
+        self.assertIn("## Additional SearXNG search results", output)
+        self.assertEqual(output.count("https://example.org/result"), 2)
+
+    def test_unverified_returned_phone_results_do_not_enter_the_ai_prompt(self):
+        prompt = llm.build_prompt("phone", "+49301234567", [{
+            "source": "Websuche (SearXNG)", "ok": True,
+            "data": {"treffer": [], "suchergebnisse": [{"url": "https://example.org/result"}]},
+        }])
+        self.assertNotIn("example.org/result", prompt)
+
+    def test_email_review_results_do_not_enter_the_ai_prompt(self):
+        prompt = llm.build_prompt("email", "person@example.org", [{
+            "source": "Öffentliche Web-Referenzen (SearXNG)", "ok": True,
+            "data": {"references": [], "suchergebnisse_zur_pruefung": [{"url": "https://example.org/result"}]},
+        }])
+        self.assertNotIn("example.org/result", prompt)
+
+    def test_historical_dns_is_available_for_report_and_pdf(self):
+        from .templatetags.report_tags import historical_dns
+        observations = historical_dns([
+            {"source": "VirusTotal (historische DNS-Auflösungen)", "ok": True,
+             "data": {"aufloesungen": [{"host_name": "old.example.net", "beobachtet_am": "2026-10-10T12:00:00Z"}]}},
+            {"source": "Passive DNS (OTX, Namen auf dieser IP)", "ok": True,
+             "data": {"zum_stichtag": [{"wert": "past.example.net", "typ": "A",
+                                            "von_zeit": "2026-10-01T00:00:00Z", "bis_zeit": "2026-10-02T00:00:00Z"}]}},
+        ])
+        self.assertEqual(observations, [
+            {"wert": "old.example.net", "zeit_von": "2026-10-10T12:00:00Z", "quelle": "VirusTotal (historische DNS-Auflösungen)"},
+            {"wert": "past.example.net", "zeit_von": "2026-10-01T00:00:00Z", "zeit_bis": "2026-10-02T00:00:00Z", "typ": "A", "quelle": "Passive DNS (OTX, Namen auf dieser IP)"},
+        ])
+
+    def test_historical_timestamp_is_human_readable(self):
+        from .templatetags.ui_tags import ui_timestamp
+        self.assertRegex(ui_timestamp("2026-10-10T12:34:56Z"), r"^10\.10\.2026, \d{2}:34 \w+$")
 
     def test_markdown_escapes_html(self):
         html = markdown("## Titel\n<script>alert(1)</script>")
@@ -778,6 +885,8 @@ class WebSearchTests(SimpleTestCase):
         with mock.patch.object(phone.search, "searx", fake_searx), mock.patch.object(phone, "SEARCH_PAUSE", 0):
             result = asyncio.run(phone.web_search(None, "+496990009123"))
         self.assertEqual([h["url"] for h in result["treffer"]], ["https://dekanat.example/kita"])
+        self.assertEqual([h["url"] for h in result["suchergebnisse"]],
+                         ["https://dekanat.example/kita", "https://spam.example/"])
         self.assertEqual(queries, [('"069 90009123"', 1), ('"+49 69 90009123"', 1)])  # Seite 2 nur bei >= 5 Treffern
         self.assertEqual(result["suchmaschinen_mit_ergebnissen"], ["bing"])
         self.assertEqual(result["gestoerte_suchmaschinen"], {"google": "access denied"})
@@ -833,10 +942,13 @@ class WebSearchTests(SimpleTestCase):
     def test_public_email_references_are_shown_as_web_findings(self):
         sources = [{"source": "Öffentliche Web-Referenzen (SearXNG)", "ok": True,
                     "data": {"references": [{"url": "https://example.org/contact", "titel": "Contact",
-                                                "fundstelle": "person@example.org"}]}}]
+                                                "fundstelle": "person@example.org"}],
+                             "suchergebnisse_zur_pruefung": [{"url": "https://example.org/review"}]}}]
         self.assertEqual(fundstellen(sources), [{"url": "https://example.org/contact", "titel": "Contact",
                                                   "fundstelle": "person@example.org", "auszug": "person@example.org",
                                                   "quelle": "Öffentliche Web-Referenzen (SearXNG)"}])
+        from .templatetags.report_tags import email_search_responses
+        self.assertEqual(email_search_responses(sources), [{"url": "https://example.org/review"}])
 
 
 class ThreatIntelTests(SimpleTestCase):

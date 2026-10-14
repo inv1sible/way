@@ -1,9 +1,10 @@
 {% load ui_tags %}{% if scan %}
+<section class="card result-card">
   <h2>{% ui 'Portscan: offene Ports' 'Port scan: open ports' %}</h2>
   <p class="muted">{{ scan.anzahl_offen }} {% ui 'offen' 'open' %} · {{ scan.gefiltert }} {% ui 'gefiltert' 'filtered' %} · {{ scan.geschlossen }} {% ui 'geschlossen' 'closed' %}
     · {{ scan.profil }}{% if scan.dauer_s %} · {{ scan.dauer_s|floatformat:0 }} s{% endif %}</p>
   {% if scan.auffaellig %}
-  <div class="card flags">
+  <div class="flags">
     <strong>{% ui 'Auffällig' 'Notable' %}</strong>
     <ul>
       {% for f in scan.auffaellig %}
@@ -25,4 +26,5 @@
   </table>
   </div>
   {% endif %}
+ </section>
 {% endif %}

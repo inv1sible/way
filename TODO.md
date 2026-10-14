@@ -1,6 +1,15 @@
 # To-do
 
-Status: 2026-10-05. Items within each section are ordered by recommendation.
+Status: 2026-10-14. Items within each section are ordered by recommendation.
+
+## Web-search follow-up
+
+- [ ] Improve server-side search availability and relevance. Complete quoted email terms are transmitted and can
+      be inspected in raw data, but Bing can return unrelated results and other engines can block the server.
+      Current coverage remains limited; direct browser search links are available for comparison.
+- [ ] Evaluate a maintained search API to replace the optional Google Custom Search JSON API connector. Google
+      has closed that API to new customers and schedules its discontinuation for January 1, 2027. See
+      [Data sources](docs/quellen.md#email-addresses).
 
 ## VPN and operational security (planned as the next step)
 
@@ -40,11 +49,11 @@ contact with third-party targets.
 
 - [ ] Add a watch list with daily snapshots for selected names and addresses so history does not depend on manual
       analyses, for example to record daily address changes of a FRITZ!Box.
-- [ ] Historical date: add VirusTotal resolutions when a key is available, the Wayback Machine when operational,
-      and RIPEstat historical WHOIS if it provides useful versions.
+- [ ] Historical date: evaluate the Wayback Machine when operational and RIPEstat historical WHOIS if it provides
+      useful versions. VirusTotal resolution history is implemented and displayed with timestamps.
 - [ ] Level 0: passive DNS through OTX and CIRCL, RIPEstat/BGP context, Certificate Transparency through crt.sh,
       and SANS ISC.
-- [ ] Domains and email: ransomware.live, Hudson Rock, Intelligence X, and Have I Been Pwned. Do not operate custom
+- [ ] Domains and email: evaluate ransomware.live, Hudson Rock, and Intelligence X. Have I Been Pwned is integrated. Do not operate custom
       onion crawlers or search leaked datasets for phone numbers because of privacy and German Criminal Code
       section 202d.
 - [ ] Phone numbers: add more search engines while keeping results visible per engine, and provide a focused

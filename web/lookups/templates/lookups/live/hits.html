@@ -1,5 +1,12 @@
-{% load ui_tags %}{% if hits %}
-  <h2>{% ui 'Fundstellen im Web' 'Web findings' %} ({{ hits|length }})</h2>
+{% load report_tags ui_tags %}{% with responses=lookup.sources|email_search_responses search_links=lookup.sources|email_search_links %}{% if hits or responses or search_links %}
+<section class="card result-card">
+  {% if hits %}<h2>{% ui 'Fundstellen im Web' 'Web findings' %} ({{ hits|length }})</h2>{% endif %}
+  <p class="muted external-link-notice">{% ui 'Externe Links öffnen Quellen über deine aktuelle Internetverbindung.' 'External links open sources through your current Internet connection.' %}</p>
+  {% if search_links %}
+  <p>{% ui 'Vollständige E-Mail direkt suchen:' 'Search the complete email directly:' %}
+    {% for link in search_links %}<a href="{{ link.url }}" target="_blank" rel="noopener noreferrer nofollow">{{ link.titel }}</a>{% if not forloop.last %} · {% endif %}{% endfor %}</p>
+  {% endif %}
+  {% if hits %}
   <ul class="hits">
   {% for hit in hits %}
     <li>
@@ -9,4 +16,16 @@
     </li>
   {% endfor %}
   </ul>
-{% endif %}
+  {% endif %}
+  {% if responses %}
+  <h3>{% ui 'SearXNG-Ergebnisse zur Prüfung' 'SearXNG results for review' %} ({{ responses|length }})</h3>
+  <p class="muted">{% ui 'Von Suchmaschinen zurückgegebene Treffer. Ob die vollständige Adresse darin belegt ist, wird für den Bericht gesondert geprüft.' 'Returned search results. Evidence of the complete address is checked separately for the report.' %}</p>
+  <ul class="hits">
+    {% for result in responses %}
+    <li><a href="{{ result.url }}" target="_blank" rel="noopener noreferrer nofollow">{{ result.titel|default:result.url }}</a>
+      <span class="muted hit-url">{{ result.url|truncatechars:90 }}</span>{% if result.suchmaschinen %}<span class="muted">{{ result.suchmaschinen|join:', ' }}</span>{% endif %}{% if result.auszug %}<p>{{ result.auszug }}</p>{% endif %}</li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+</section>
+{% endif %}{% endwith %}

@@ -22,13 +22,9 @@ engines:
     disabled: false
   - name: bing
     disabled: false
-  - name: startpage
-    disabled: false
-  - name: mojeek
-    disabled: false
   - name: qwant
     disabled: false
   - name: yahoo
     disabled: false
-  - name: presearch
-    disabled: false
+# Startpage and Mojeek are inactive in upstream SearXNG because their current
+# interfaces require proof-of-work challenges. Presearch is no longer provided.

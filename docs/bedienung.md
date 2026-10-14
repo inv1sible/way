@@ -2,13 +2,13 @@
 
 ## Search
 
-Enter a phone number in any common notation, an IPv4 or IPv6 address, or a hostname. Phone numbers without a
+Enter an email address, a phone number in any common notation, an IPv4 or IPv6 address, or a hostname. Phone numbers without a
 country code use `DEFAULT_REGION`. URLs are accepted and reduced to their hostname, for example
 `https://example.org/path` becomes `example.org`.
 
 Network-specific options remain hidden for phone numbers. They appear only after the input contains a period, as
-used by IPv4 addresses and hostnames, or a colon for IPv6. Entering a phone number offers a separately authorized,
-bounded public web search; entering an email address offers its corresponding authorized public-reference search.
+used by IPv4 addresses and hostnames, or a colon for IPv6. Phone numbers and email addresses each offer their
+applicable public web search option, also available when rerunning an analysis.
 
 - **Reference date (optional):** adds historical BGP data from RIPEstat, passive DNS from AlienVault OTX, and the
   user's own analysis closest to the selected date. Passive DNS is incomplete; only the provider can establish who
@@ -19,10 +19,15 @@ bounded public web search; entering an email address offers its corresponding au
   [Router Fingerprint](router-fingerprint.md).
 - **Port scan** (administrators only): run Nmap against the top 1,000 ports, restricted to entries in
   **Owned systems**. See [Security and operational security](sicherheit.md).
-- **Public web search (email and phone):** WAY queries its self-hosted SearXNG
-  instance only. Email uses at most two exact-address searches; phone uses at most three format-aware searches.
-  WAY stores matching result metadata but does not open, crawl, or scrape result pages. Professional public-profile
-  snippets may appear for an email address; they are not proof of identity or account ownership.
+- **Public web search (email and phone):** email uses one quoted query containing the complete address,
+  without a result-language restriction, through the self-hosted SearXNG instance. Its raw source data records
+  the requested query and the query echoed by SearXNG, and review results retain their originating engines.
+  Google Programmable Search additionally uses `exactTerms` when `GOOGLE_CSE_API_KEY` and `GOOGLE_CSE_ID`
+  are configured for an existing API customer. This legacy API is unavailable to new customers and is scheduled
+  to end on January 1, 2027. Its phrase parameter does not independently verify the contents of a page.
+  The existing web-findings panel also offers direct searches in Google (Verbatim), Bing and DuckDuckGo,
+  useful when server-side searches are blocked. Public websites are not excluded by domain category.
+  Phone uses at most three format-aware searches. WAY stores search-result metadata without fetching result pages.
 
 Select **Analyze** to create the analysis and open its detail page.
 
@@ -65,6 +70,16 @@ One grouped entry includes every run of that query. Running analyses cannot be d
   DNS is not proof of ownership.
 - **Raw data:** every source can be expanded and copied separately, with **Expand all / Collapse all** and **Copy all**
   for the complete source set.
+- **Web findings:** public links open in a new tab through your current Internet connection. Phone search results
+  without a number match appear separately from documented references. Returned email results remain available
+  in **SearXNG results for review**, with their source engines; only metadata containing the complete address
+  supports a report finding. Direct search links also appear when server-side search returns no results.
+- **Historical DNS:** available observations appear beside the report and in the PDF, with source, observation time
+  or first/last-seen interval, and a readable timezone. Original API timestamps remain in raw data. Missing dates
+  are not inferred. These observations do not establish who owned the address at the time.
+
+Rerun an analysis to obtain the current source format and regenerate its AI report. Previously saved analyses are
+not rewritten automatically. Web-search responses with results are cached for 24 hours; a rerun can reuse them.
 
 ## Extensions and published main numbers
 

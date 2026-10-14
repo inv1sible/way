@@ -26,8 +26,7 @@
     <label><strong>{% ui 'E-Mail erneut analysieren' 'Run email analysis again' %}</strong></label>
     <p class="muted note-tip">{% ui 'Neue oder zuvor nicht gewählte Quellen werden erst nach deiner erneuten Auswahl abgefragt.' 'New or previously unselected sources run only after you select them again.' %}</p>
     <label class="check"><input type="checkbox" name="email_public_web" value="on"{% if lookup.email_public_web %} checked{% endif %}>
-      <span>{% ui 'Öffentliche Web-Referenzen: exakte Adresse in Suchergebnissen prüfen' 'Public web references: check the exact address in search results' %}
-        <span class="muted">({% ui 'höchstens zwei Suchen; keine Ergebnis-Webseiten öffnen oder crawlen; keine Messenger-, Personenverzeichnis- oder Leak-Suche' 'at most two searches; no result-page fetching or crawling; no messenger, people-directory, or leak search' %})</span></span></label>
+      <span>{% ui 'Vollständige E-Mail-Adresse im öffentlichen Web suchen' 'Search the public web for the complete email address' %}</span></label>
     {% elif lookup.kind == "ip" or lookup.kind == "host" %}
     <label><strong>{% ui 'Netzwerkziel erneut analysieren' 'Run network-target analysis again' %}</strong></label>
     <p class="muted note-tip">{% ui 'Die passive Analyse läuft immer. Aktive Optionen werden nur ausgeführt, wenn du sie hier erneut auswählst und bestätigst.' 'The passive analysis always runs. Active options run only when you select and confirm them here again.' %}</p>

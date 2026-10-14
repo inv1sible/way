@@ -51,6 +51,9 @@ th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--bor
 .risk-unklar, .risk-none { color: var(--neutral); }
 .report h2 { margin-top: 1.2rem; font-size: 1.1rem; }
 .report h2:first-child { margin-top: 0; }
+.result-card { margin-top: 16px; }
+.result-card h2 { margin-top: 0; }
+.external-link-notice { margin: 6px 0; font-size: .85rem; }
 .language-switch { display: inline-flex; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
 .language-switch button { padding: 6px 14px; border-radius: 0; background: var(--surface); color: var(--accent); }
 .language-switch button + button { border-left: 1px solid var(--border); }

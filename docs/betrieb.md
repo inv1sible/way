@@ -22,6 +22,7 @@ Generate random secret values with `python3 -c "import secrets; print(secrets.to
 | `APP_BIND`, `APP_PORT` | Host interface and port for the web service |
 | `POSTGRES_*` | Database settings; always set `POSTGRES_PASSWORD` |
 | `SEARXNG_SECRET` | Required secret for web search |
+| `GOOGLE_CSE_API_KEY`, `GOOGLE_CSE_ID` | Optional legacy Google Custom Search JSON API credentials; existing customers only, scheduled discontinuation January 1, 2027. See [Data sources](quellen.md#email-addresses). |
 | `TOOLS_TOKEN` | Required authentication token for the `tools` container |
 | `OLLAMA_URL`, `OLLAMA_MODEL` | Ollama endpoint and model; tested with `qwen3:8b` |
 | `DEFAULT_REGION` | Country used for phone numbers without a country code; default `DE` |
@@ -53,6 +54,22 @@ generation fails. Raw data remains stored, and **Analyze again** can generate th
 git pull
 docker compose up -d --build
 ```
+
+This rebuilds WAY but does not necessarily fetch a newer SearXNG image. To update the search adapters explicitly:
+
+```sh
+docker compose pull searxng
+docker compose up -d --no-deps --force-recreate searxng
+```
+
+The local SearXNG deployment was verified on `2026.10.13+22c64b8d3`. Updating its image does not by itself resolve
+upstream blocks or irrelevant Bing responses. The upstream defaults mark Startpage and Mojeek inactive because
+of proof-of-work challenges; the removed Presearch engine is not configured. Do not assume that adding
+`disabled: false` makes an unsupported or inactive adapter usable.
+
+Email raw data includes `searxng_anfrage`, `searxng_empfangene_suchanfrage`, engine errors, and returned results for
+diagnosis. A confirmed echoed query proves reception by SearXNG, not successful execution by every upstream engine.
+Changing a query or its language produces a separate cache entry; existing stored reports remain unchanged until rerun.
 
 ### Completion convention
 

@@ -60,14 +60,22 @@
     <p class="note">{% ui 'Der Bericht wurde automatisch von einem Sprachmodell aus den Rohdaten im Anhang erstellt und kann Fehler enthalten. Maßgeblich sind die Rohdaten der jeweiligen Quellen.' 'The report was generated automatically by a language model from the raw data in the appendix and may contain errors. The raw data from each source is authoritative.' %}</p>
   {% endif %}
 
+  {% with observations=lookup.sources|historical_dns %}{% if observations %}
+    <h2>{% ui 'Historische DNS-Beobachtungen' 'Historical DNS observations' %}</h2>
+    <ul>{% for observation in observations %}
+      <li><strong>{{ observation.wert }}</strong>{% if observation.typ %} ({{ observation.typ }}){% endif %}{% if observation.zeit_von %} · {{ observation.zeit_von|ui_timestamp }}{% endif %}{% if observation.zeit_bis %} – {{ observation.zeit_bis|ui_timestamp }}{% endif %} [{{ observation.quelle }}]</li>
+    {% endfor %}</ul>
+  {% endif %}{% endwith %}
+
   {% include "lookups/live/scan.html" %}
   {% include "lookups/live/history.html" %}
 
   {% with hits=lookup.sources|fundstellen %}{% if hits %}
     <h2>{% ui 'Fundstellen im Web' 'Web findings' %} ({{ hits|length }})</h2>
+    <p class="note">{% ui 'Externe Links öffnen Quellen über deine aktuelle Internetverbindung.' 'External links open sources through your current Internet connection.' %}</p>
     <ol class="hits">
       {% for hit in hits %}
-        <li><strong>{{ hit.titel|default:"(untitled)" }}</strong><br><span class="url">{{ hit.url }}</span>
+        <li><strong><a href="{{ hit.url }}">{{ hit.titel|default:"(untitled)" }}</a></strong><br><a class="url" href="{{ hit.url }}">{{ hit.url }}</a>
           {% if hit.auszug %}<br><span class="snippet">{{ hit.auszug }}</span>{% endif %}</li>
       {% endfor %}
     </ol>

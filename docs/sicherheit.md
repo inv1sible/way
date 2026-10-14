@@ -62,4 +62,5 @@ arbitrary public target, so the token must remain only in `.env`.
   model to ignore instructions embedded in source content.
 - PDF export never loads external resources, preventing tracking pixels from cited pages.
 - The PWA share target only prefills the search field and never starts an analysis automatically.
-- WAY does not search leaked datasets for phone numbers because of privacy and German Criminal Code section 202d.
+- Public email and phone web searches retrieve search-index metadata without opening result pages. These searches
+  do not require an ownership confirmation. Active network probes retain the owned-system boundaries described above.

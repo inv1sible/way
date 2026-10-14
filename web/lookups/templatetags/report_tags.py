@@ -49,7 +49,12 @@ def fundstellen(sources):
         if not source.get("ok") or not source["source"].startswith(SEARCH_SOURCES):
             continue
         data = source.get("data")
-        for group in data.values() if isinstance(data, dict) else [data]:
+        groups = data.values() if isinstance(data, dict) else [data]
+        if source["source"] == "Websuche (SearXNG)" and isinstance(data, dict):
+            groups = [data.get("treffer", [])]
+        elif source["source"] == "Öffentliche Web-Referenzen (SearXNG)" and isinstance(data, dict):
+            groups = [data.get("references", [])]
+        for group in groups:
             for hit in group if isinstance(group, list) else []:
                 if not isinstance(hit, dict):
                     continue
@@ -61,6 +66,72 @@ def fundstellen(sources):
                     hits.append({**hit, "auszug": hit.get("auszug") or hit.get("fundstelle"),
                                  "quelle": source["source"]})
     return hits
+
+
+@register.filter
+def returned_search_results(sources):
+    """Begrenzte SearXNG-Ergebnisse, die nicht zwingend die vollständige Nummer im Auszug belegen."""
+    seen, hits = set(), []
+    for source in sources or []:
+        if not source.get("ok") or source.get("source") != "Websuche (SearXNG)":
+            continue
+        for hit in (source.get("data") or {}).get("suchergebnisse", []):
+            url = hit.get("url") or ""
+            if url.startswith(("https://", "http://")) and url not in seen:
+                seen.add(url)
+                hits.append({**hit, "quelle": source["source"]})
+    return hits
+
+
+@register.filter
+def email_search_links(sources):
+    for source in sources or []:
+        if source.get("ok") and source.get("source") == "Öffentliche Web-Referenzen (SearXNG)":
+            return (source.get("data") or {}).get("suchlinks", [])
+    return []
+
+
+@register.filter
+def email_search_responses(sources):
+    """SearXNG results retained for review; they are not public-address references or report findings."""
+    seen, results = set(), []
+    for source in sources or []:
+        if not source.get("ok") or source.get("source") != "Öffentliche Web-Referenzen (SearXNG)":
+            continue
+        for result in (source.get("data") or {}).get("suchergebnisse_zur_pruefung", []):
+            url = result.get("url") or ""
+            if url.startswith(("https://", "http://")) and url not in seen:
+                seen.add(url)
+                results.append(result)
+    return results
+
+
+@register.filter
+def historical_dns(sources):
+    """Normalized, timestamped historical DNS observations for the report and PDF."""
+    seen, observations = set(), []
+    for source in sources or []:
+        if not source.get("ok"):
+            continue
+        name, data = source.get("source", ""), source.get("data") or {}
+        if name == "VirusTotal (historische DNS-Auflösungen)":
+            for item in data.get("aufloesungen", []) if isinstance(data, dict) else []:
+                value, when = item.get("host_name"), item.get("beobachtet_am") or item.get("date")
+                key = (name, value, when)
+                if value and key not in seen:
+                    seen.add(key)
+                    observations.append({"wert": value, "zeit_von": when, "quelle": name})
+        elif name.startswith("Passive DNS") and isinstance(data, dict):
+            for group in ("zum_stichtag", "naechste_eintraege", "alle_adressen"):
+                for item in data.get(group, []):
+                    value = item.get("wert")
+                    start, end = item.get("von_zeit") or item.get("von"), item.get("bis_zeit") or item.get("bis")
+                    key = (name, value, start, end)
+                    if value and key not in seen:
+                        seen.add(key)
+                        observations.append({"wert": value, "zeit_von": start, "zeit_bis": end,
+                                             "typ": item.get("typ"), "quelle": name})
+    return observations
 
 
 def scan_data(sources):
