@@ -36,7 +36,7 @@ contact with third-party targets.
 - [ ] Add SMTP credentials to `.env` (`EMAIL_*`). Invitation and confirmation messages are not delivered until
       then.
 - [ ] Add an email address to the `admin` account so that password reset works.
-- [ ] Free approximately 3 GB of GPU memory on `192.168.1.139` so `qwen3:8b` fits completely on the GPU.
+- [ ] Free approximately 3 GB of GPU memory on `192.168.1.206` so `qwen3:8b` fits completely on the GPU.
 - [ ] Add free API keys to `.env`: VirusTotal, abuse.ch, CrowdSec, and AbuseIPDB.
 - [ ] Create a free account at platform.censys.io, set `CENSYS_TOKEN` and the organization ID, run an analysis,
       verify the response parsing, and determine the credit cost. Censys has so far only been tested with example
