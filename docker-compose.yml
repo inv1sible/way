@@ -9,6 +9,8 @@ x-app: &app
     TOOLS_URL: http://tools:8000
   volumes:
     - /etc/localtime:/etc/localtime:ro
+    # Lokale GeoIP-Datenbanken (DB-IP Lite, wahlweise GeoLite2), gemeinsam für web und worker
+    - geoip:/data/geoip
   restart: unless-stopped
   depends_on:
     db:
@@ -87,3 +89,4 @@ networks:
 
 volumes:
   pgdata:
+  geoip:

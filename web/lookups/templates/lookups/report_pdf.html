@@ -46,7 +46,7 @@
   <table>
     <tr><th>{% ui 'Typ' 'Type' %}</th><td>{{ lookup.kind|kind_label }}</td></tr>
     {% if lookup.as_of %}<tr><th>{% ui 'Stand (Rückblick)' 'Reference date' %}</th><td>{{ lookup.as_of|ui_date }}</td></tr>{% endif %}
-    <tr><th>{% ui 'Abfragestufe' 'Query mode' %}</th><td>{% ui 'passiv' 'passive' %}{% if lookup.active_probe %}, {% ui 'leicht aktiv (Berechtigung bestätigt; Ports' 'active-light (authorization confirmed; ports' %} {{ lookup.active_ports|join:", " }}){% endif %}{% if lookup.port_scan %}, {% ui 'Portscan (eigenes System)' 'port scan (owned system)' %}{% endif %}</td></tr>
+    <tr><th>{% ui 'Abfragestufe' 'Query mode' %}</th><td>{% if lookup.local_only %}{% ui 'nur lokal (keine externen Anfragen)' 'local only (no external requests)' %}{% else %}{% ui 'passiv' 'passive' %}{% endif %}{% if lookup.active_probe %}, {% ui 'leicht aktiv (Berechtigung bestätigt; Ports' 'active-light (authorization confirmed; ports' %} {{ lookup.active_ports|join:", " }}){% endif %}{% if lookup.port_scan %}, {% ui 'Portscan (eigenes System)' 'port scan (owned system)' %}{% endif %}</td></tr>
     <tr><th>Status</th><td>{{ lookup.status|status_label }}</td></tr>
     <tr><th>{% ui 'Analyse gestartet' 'Analysis started' %}</th><td>{{ lookup.created_at|ui_datetime }}</td></tr>
     <tr><th>{% ui 'Abgeschlossen' 'Completed' %}</th><td>{{ lookup.finished_at|ui_datetime }}</td></tr>

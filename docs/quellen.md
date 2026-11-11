@@ -44,6 +44,7 @@ Use it to reset affected passwords, enable MFA, and review the affected service.
 
 | Source | Key in `.env` | Data |
 |---|---|---|
+| Local GeoIP database | – | Approximate location and ASN from DB-IP Lite (or GeoLite2) files in the `geoip` volume; no network access |
 | Reverse DNS and RDAP | – | Address name, network owner, and abuse contact |
 | WHOIS and ASN through Team Cymru | – | Local `whois` and `dig` execution in the `tools` container |
 | ip-api.com | – | Location, ASN, and hosting, proxy, or mobile-network indicators |
@@ -99,6 +100,11 @@ web metadata, and the selected router profile. Port scan can add Nmap for an aut
   for this distinction.
 - **IPinfo.io Lite** identifies the network's autonomous system, not the subscriber or device using an address.
   Its location is country-level and the provider is queried only when `IPINFO_TOKEN` is configured.
+- **Local only** (IP addresses) runs only the address classification, the local GeoIP database, your previous
+  analyses, and the report through `OLLAMA_URL`. It cannot be combined with active checks or port scans and is not
+  offered for hostnames, which already need external DNS. `python manage.py update_geoip` downloads DB-IP Lite
+  (CC BY 4.0) at every web start when the files are missing or older than 30 days; that download reveals no queried
+  address. Files named `GeoLite2-City.mmdb` or `GeoLite2-ASN.mmdb` in the volume take precedence.
 - **Passive scanner data** is third-party evidence measured at another time. It can show an Internet-facing IoT
   service or a forwarded internal device, but cannot inventory a LAN, establish router ownership, or prove that an
   IP address is static. Use a verified hostname and repeated owned-target observations to follow dynamic addresses.

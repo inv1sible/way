@@ -30,6 +30,10 @@
     {% elif lookup.kind == "ip" or lookup.kind == "host" %}
     <label><strong>{% ui 'Netzwerkziel erneut analysieren' 'Run network-target analysis again' %}</strong></label>
     <p class="muted note-tip">{% ui 'Die passive Analyse läuft immer. Aktive Optionen werden nur ausgeführt, wenn du sie hier erneut auswählst und bestätigst.' 'The passive analysis always runs. Active options run only when you select and confirm them here again.' %}</p>
+    {% if lookup.kind == "ip" %}
+    <label class="check"><input type="checkbox" name="local_only" value="on"{% if lookup.local_only %} checked{% endif %}>
+      <span>{% ui 'Nur lokal (keine externen Anfragen)' 'Local only (no external requests)' %}</span></label>
+    {% endif %}
     <label>{% ui 'Stand (optional)' 'Reference date (optional)' %}
       <input type="date" name="asof" min="2000-01-01" max="{% now 'Y-m-d' %}"{% if lookup.as_of %} value="{{ lookup.as_of|date:'Y-m-d' }}"{% endif %}></label>
     {% if enrichment_allowed %}

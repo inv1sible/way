@@ -77,6 +77,10 @@ class Lookup(models.Model):
         "Öffentliche Rufnummern-Referenzen", default=False,
         help_text="Ausdrücklich bestätigte, begrenzte Suche nach der Rufnummer in öffentlichen Web-Suchergebnissen.",
     )
+    local_only = models.BooleanField(
+        "Nur lokal", default=False,
+        help_text="IP-Analyse ausschließlich mit lokalen Daten (GeoIP-Datenbank, eigene frühere Analysen), ohne externe Anfragen.",
+    )
     enrichment_of = models.ForeignKey(
         "self", null=True, blank=True, on_delete=models.SET_NULL, related_name="+", editable=False,
         verbose_name="angereichert aus",

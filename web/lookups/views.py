@@ -31,7 +31,8 @@ def ui_text(german, english):
 
 
 def _start(request, kind, query, active=False, active_ports=None, active_timeout=8, active_profile=None,
-           enrichment_of=None, scan=False, as_of=None, note=None, email_public_web=False, phone_public_web=False):
+           enrichment_of=None, scan=False, as_of=None, note=None, email_public_web=False, phone_public_web=False,
+           local_only=False):
     # Direkter Kontakt zu fremden Zielen nur für Admins: Er geht von der Adresse dieses Servers aus.
     if note is None and request.user.is_authenticated:
         previous = Lookup.objects.filter(created_by=request.user, kind=kind, query=query).exclude(note="").first()
@@ -43,6 +44,7 @@ def _start(request, kind, query, active=False, active_ports=None, active_timeout
         active_profile=active_profile or Lookup.ActiveProfile.FRITZBOX, enrichment_of=enrichment_of,
         as_of=as_of, note=note or "", email_public_web=bool(kind == "email" and email_public_web),
         phone_public_web=bool(kind == "phone" and phone_public_web),
+        local_only=bool(kind == "ip" and local_only and not active and not scan),
     )
     transaction.on_commit(lambda: run_lookup.delay(lookup.pk))
     return redirect("lookups:detail", pk=lookup.pk)
@@ -94,12 +96,15 @@ def index(request):
     except ValueError as exc:
         return _index(request, q=query, error=str(exc))
     scan = request.POST.get("scan") == "on" and request.user.is_staff and kind in {"ip", "host"}
+    active = request.POST.get("active") == "on" and request.user.is_staff and kind in {"ip", "host"}
+    local_only = request.POST.get("local_only") == "on"
+    if local_only and (error := local_only_error(kind, active or scan)):
+        return _index(request, q=query, error=error)
     if scan and not ownership.is_owned(kind, value):
         return _index(request, q=query, error=ui_text(
             f"„{value}“ ist nicht als eigenes System eingetragen. Der Portscan ist nur für eigene Systeme erlaubt.",
             f"“{value}” is not registered as an owned system. Port scans are allowed only for owned systems.",
         ))
-    active = request.POST.get("active") == "on" and request.user.is_staff and kind in {"ip", "host"}
     active_ports, active_timeout = fritzbox.DEFAULT_PORTS, fritzbox.DEFAULT_TIMEOUT
     if active:
         if not ownership.is_owned(kind, value):
@@ -120,7 +125,17 @@ def index(request):
     return _start(request, kind, value, active=active, active_ports=active_ports,
                   active_timeout=active_timeout, scan=scan, as_of=as_of,
                   email_public_web=request.POST.get("email_public_web") == "on",
-                  phone_public_web=request.POST.get("phone_public_web") == "on")
+                  phone_public_web=request.POST.get("phone_public_web") == "on", local_only=local_only)
+
+
+def local_only_error(kind, active):
+    """Nur lokal darf nie stillschweigend zu einer Abfrage mit externen Anfragen werden."""
+    if kind != "ip":
+        return ui_text("„Nur lokal“ ist nur für IP-Adressen möglich.", "“Local only” is available for IP addresses only.")
+    if active:
+        return ui_text("„Nur lokal“ schließt aktive Prüfungen und Portscans aus.",
+                       "“Local only” excludes active checks and port scans.")
+    return None
 
 
 @require_POST
@@ -406,7 +421,7 @@ def rerun(request, pk):
     lookup = get_object_or_404(_visible(request), pk=pk)
     # A rerun is passive unless the user explicitly selects an active option again.
     # Do not silently repeat direct network access from an earlier run.
-    active = scan = False
+    active = scan = local_only = False
     ports, timeout, profile = fritzbox.DEFAULT_PORTS, fritzbox.DEFAULT_TIMEOUT, Lookup.ActiveProfile.FRITZBOX
     if lookup.kind in {"ip", "host"}:
         try:
@@ -416,6 +431,10 @@ def rerun(request, pk):
             return redirect("lookups:detail", pk=lookup.pk)
         active = request.POST.get("active") == "on"
         scan = request.POST.get("scan") == "on"
+        local_only = request.POST.get("local_only") == "on"
+        if local_only and (error := local_only_error(lookup.kind, active or scan)):
+            messages.error(request, error)
+            return redirect("lookups:detail", pk=lookup.pk)
         if active or scan:
             if request.POST.get("authorization") != "confirmed":
                 messages.error(request, ui_text(
@@ -465,6 +484,7 @@ def rerun(request, pk):
         scan=scan, as_of=as_of, note=lookup.note,
         email_public_web=request.POST.get("email_public_web") == "on" if lookup.kind == "email" else lookup.email_public_web,
         phone_public_web=request.POST.get("phone_public_web") == "on" if lookup.kind == "phone" else lookup.phone_public_web,
+        local_only=local_only,
     )
 
 

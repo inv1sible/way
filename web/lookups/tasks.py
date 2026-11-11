@@ -41,6 +41,7 @@ async def _collect_with_progress(lookup, active=False, scan=False, scan_asns=Non
         scan=scan, scan_asns=scan_asns, active_asns=active_asns, active_dns_name=active_dns_name, as_of=lookup.as_of,
         email_public_web=lookup.email_public_web,
         phone_public_web=lookup.phone_public_web,
+        local_only=lookup.local_only,
     )
 
 

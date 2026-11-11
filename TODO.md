@@ -24,8 +24,8 @@ contact with third-party targets.
       disclose the investigated targets.
 - [ ] Test web search through the VPN separately because search engines often throttle VPN addresses more quickly.
 - [ ] Consider Tor only for level 1 TLS/web requests, not APIs, because exit nodes are frequently blocked.
-- [ ] Improve third-party privacy by preferring local datasets: GeoLite2 instead of ip-api.com, local cloud and VPN
-      ranges, and local FireHOL lists.
+- [ ] Improve third-party privacy by preferring local datasets: local cloud and VPN ranges and local FireHOL lists.
+      A local GeoIP database (DB-IP Lite/GeoLite2) and the "Local only" IP mode exist since 2026-11-11.
 - [ ] Add defense in depth for `tools`: a `DOCKER-USER` firewall rule that prevents the `way_probe` network from
       reaching the LAN. At present this is enforced only by target validation inside the service.
 - [ ] Define retention and rotation for `tools` logs because they contain queried targets.

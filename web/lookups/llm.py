@@ -59,6 +59,8 @@ verraten Mail- und Hosting-Anbieter. "TLS-Zertifikat" und "Web-Kopfzeilen" nenne
 alternative Namen und Seitentitel.
 - "Frühere eigene Analysen" zeigen Veränderungen derselben Abfrage über die Zeit (z. B. wechselnde \
 Adressen eines dynamischen DNS-Namens). Nenne Änderungen seit der letzten Analyse ausdrücklich.
+- "Lokale GeoIP-Datenbank" nennt nur den ungefähren Standort und den Netzbetreiber (ASN) des Netzbereichs, \
+nie Anschlussinhaber oder Gerät; nenne Stadt und Region als ungefähr.
 - Historische DNS-Daten, passive Scanner und Router-Fingerprints dürfen nur direkt vorhandene Namen, Dienste,
 Modelle, Versionen oder Banner nennen. Fasse sie als belegte Beobachtung mit Quelle zusammen.
 - Fasse dich kurz und sachlich."""

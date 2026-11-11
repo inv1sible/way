@@ -2,6 +2,8 @@
 set -e
 
 python manage.py migrate --noinput
+# Lokale GeoIP-Datenbanken laden bzw. monatlich erneuern; im Hintergrund, damit der Start nicht wartet
+python manage.py update_geoip &
 
 if [ -n "$DJANGO_SUPERUSER_PASSWORD" ]; then
     python manage.py createsuperuser --noinput 2>/dev/null || true

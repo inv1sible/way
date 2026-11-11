@@ -17,7 +17,8 @@ RUN pip install -r requirements.txt
 COPY . .
 RUN DJANGO_SECRET_KEY=build python manage.py collectstatic --noinput \
     && chmod +x entrypoint.sh \
-    && useradd --system --create-home --uid 10001 app
+    && useradd --system --create-home --uid 10001 app \
+    && mkdir -p /data/geoip && chown app /data/geoip
 
 USER app
 EXPOSE 8000

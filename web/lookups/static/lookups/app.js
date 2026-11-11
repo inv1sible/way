@@ -181,6 +181,13 @@ document.addEventListener("click", async (event) => {
       group.hidden = !visible;
       group.querySelectorAll("input").forEach((input) => { input.disabled = !visible; });
     });
+    // "Nur lokal" gibt es nur für IP-Adressen; Hostnamen brauchen schon für die Auflösung externes DNS.
+    const value = query.value.trim();
+    const ip = kind === "network" && (value.includes(":") || /^(?:\d{1,3}\.){1,3}\d{0,3}$/.test(value));
+    form.querySelectorAll("[data-ip-only]").forEach((option) => {
+      option.hidden = !ip;
+      option.querySelectorAll("input").forEach((input) => { input.disabled = !ip; });
+    });
     form.classList.toggle("open", kind !== "none");
     form.dataset.inputKind = kind;
   };

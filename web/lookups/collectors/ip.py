@@ -7,7 +7,7 @@ import time
 
 from django.conf import settings
 
-from . import censys, fritzbox, history, ipinfo, netlas, router, run_source, shodan, speedport, threatintel, tools
+from . import censys, fritzbox, geoip, history, ipinfo, netlas, router, run_source, shodan, speedport, threatintel, tools
 
 CGNAT = ipaddress.ip_network("100.64.0.0/10")
 IP_BINDING_SOURCE = "IP-Zielbindung (ASN)"
@@ -195,9 +195,14 @@ async def spamhaus(ip):
 
 
 async def collect(client, ip, active=False, sni=None, active_ports=None, active_timeout=8, active_profile="fritzbox",
-                  active_blocked=None, scan=False, active_asns=None, active_dns_name=None, as_of=None):
+                  active_blocked=None, scan=False, active_asns=None, active_dns_name=None, as_of=None, local_only=False):
     info = classify(ip)
     results = [{"source": "Adressklassifizierung", "ok": True, "data": info}]
+    if local_only:
+        # Nur lokal: Keine Anfrage verlässt den Server, weder an Dienste noch per DNS noch an das Ziel.
+        if info["oeffentlich"]:
+            results.append(await run_source(geoip.SOURCE, geoip.lookup, ip))
+        return results
     if not info["oeffentlich"]:
         fingerprint = await fritzbox.fingerprint(
             client, sni or ip, ip, results, active=active and active_profile == "fritzbox", ports=active_ports, timeout=active_timeout,
@@ -224,6 +229,8 @@ async def collect(client, ip, active=False, sni=None, active_ports=None, active_
         ("GreyNoise Community", greynoise, client, ip),
         ("Tor-Exit-Liste", tor_exit, client, ip),
     ]
+    if geoip.available():
+        jobs.append((geoip.SOURCE, geoip.lookup, ip))
     if info["version"] == 4:
         jobs.append(("Spamhaus ZEN", spamhaus, ip))
     if settings.OSINT_ABUSEIPDB_KEY:

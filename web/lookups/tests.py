@@ -8,7 +8,7 @@ from django.urls import reverse
 from django.utils import translation
 
 from . import llm
-from .collectors import bnetza, censys, email, fritzbox, history, host, ip, ipinfo, netlas, phone, router, shodan, speedport, threatintel
+from .collectors import bnetza, censys, email, fritzbox, geoip, history, host, ip, ipinfo, netlas, phone, router, shodan, speedport, threatintel
 from .collectors import tools as tools_client
 from .detect import detect, extract
 from .models import Lookup, OwnedTarget
@@ -2588,3 +2588,116 @@ class CopyButtonTests(TestCase):
         # beim Nachladen während der Recherche enthalten die Teile ebenfalls den Button
         status = self.client.get(reverse("lookups:status", args=[lookup.pk])).json()
         self.assertTrue(all("data-copy-source" in source["html"] for source in status["sources"]))
+
+
+class FakeMmdb:
+    def __init__(self, record, prefix):
+        self.record, self.prefix = record, prefix
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+    def get_with_prefix_len(self, ip):
+        return self.record, self.prefix
+
+    def metadata(self):
+        return mock.Mock(build_epoch=1793491200)  # 2026-11-01
+
+
+class GeoipTests(SimpleTestCase):
+    CITY = {"country": {"iso_code": "DE", "names": {"de": "Deutschland", "en": "Germany"}},
+            "subdivisions": [{"names": {"en": "Hesse"}}], "city": {"names": {"en": "Frankfurt am Main"}},
+            "location": {"latitude": 50.1, "longitude": 8.7}}
+    ASN = {"autonomous_system_number": 64500, "autonomous_system_organization": "Example Net GmbH"}
+
+    def _lookup(self, files, readers):
+        import tempfile
+        from pathlib import Path
+        with tempfile.TemporaryDirectory() as folder, override_settings(OSINT_GEOIP_DIR=folder):
+            for name in files:
+                Path(folder, name).write_bytes(b"")
+            with mock.patch("lookups.collectors.geoip.maxminddb.open_database", side_effect=readers):
+                return geoip.lookup("203.0.113.7")
+
+    def test_reads_city_and_asn_with_attribution(self):
+        result = self._lookup(["dbip-city-lite.mmdb", "dbip-asn-lite.mmdb"],
+                              [FakeMmdb(self.CITY, 24), FakeMmdb(self.ASN, 20)])
+        self.assertEqual(result["land"], "Deutschland")
+        self.assertEqual(result["ort"], "Frankfurt am Main")
+        self.assertEqual(result["asn"], "AS64500")
+        self.assertEqual(result["netz_asn"], "203.0.112.0/20")
+        self.assertIn("DB-IP", result["datenbanken"][0]["lizenz"])
+        self.assertEqual(result["datenbanken"][0]["stand"], "2026-11-01")
+
+    def test_prefers_geolite2_when_present(self):
+        result = self._lookup(["GeoLite2-City.mmdb", "dbip-city-lite.mmdb"], [FakeMmdb(self.CITY, 24)])
+        self.assertEqual(result["datenbanken"][0]["datei"], "GeoLite2-City.mmdb")
+        self.assertIn("MaxMind", result["datenbanken"][0]["lizenz"])
+
+    def test_missing_database_is_reported(self):
+        with self.assertRaisesRegex(RuntimeError, "update_geoip"):
+            self._lookup([], [])
+
+
+class LocalOnlyTests(TestCase):
+    def setUp(self):
+        self.staff = get_user_model().objects.create_user("chef", password="x", is_staff=True)
+        OwnedTarget.objects.create(value="8.8.8.8")
+
+    def _submit(self, q="8.8.8.8", **extra):
+        self.client.force_login(self.staff)
+        with mock.patch("lookups.views.run_lookup.delay"), self.captureOnCommitCallbacks(execute=True):
+            return self.client.post(reverse("lookups:index"), {"q": q, "local_only": "on", **extra})
+
+    def test_collect_makes_no_external_request(self):
+        geo = {"land": "Deutschland"}
+        with mock.patch("lookups.collectors.ip.geoip.lookup", return_value=geo), \
+                mock.patch("socket.gethostbyaddr", side_effect=AssertionError("DNS")), \
+                mock.patch("socket.gethostbyname_ex", side_effect=AssertionError("DNS")):
+            results = asyncio.run(ip.collect(client=None, ip="8.8.8.8", local_only=True, as_of="2026-01-01"))
+        self.assertEqual([r["source"] for r in results], ["Adressklassifizierung", geoip.SOURCE])
+        self.assertEqual(results[1]["data"], geo)
+
+    def test_private_address_gets_only_the_classification(self):
+        results = asyncio.run(ip.collect(client=None, ip="192.168.1.10", local_only=True))
+        self.assertEqual([r["source"] for r in results], ["Adressklassifizierung"])
+
+    def test_checkbox_is_stored_and_shown(self):
+        self._submit()
+        lookup = Lookup.objects.get()
+        self.assertTrue(lookup.local_only)
+        self.assertContains(self.client.get(reverse("lookups:detail", args=[lookup.pk])), "nur lokal")
+        self.assertContains(self.client.get(reverse("lookups:index")), 'name="local_only"')
+
+    def test_refused_for_hostnames_and_with_active_options(self):
+        self.assertContains(self._submit(q="example.com"), "nur für IP-Adressen", status_code=400)
+        self.assertContains(self._submit(active="on"), "schließt aktive", status_code=400)
+        self.assertContains(self._submit(scan="on"), "schließt aktive", status_code=400)
+        self.assertFalse(Lookup.objects.exists())
+
+    def test_rerun_keeps_choice_only_when_selected_again(self):
+        self._submit()
+        first = Lookup.objects.get()
+        Lookup.objects.filter(pk=first.pk).update(status=Lookup.Status.DONE)
+        page = self.client.get(reverse("lookups:detail", args=[first.pk]))
+        self.assertContains(page, 'name="local_only" value="on" checked', html=False)
+        with mock.patch("lookups.views.run_lookup.delay"), self.captureOnCommitCallbacks(execute=True):
+            self.client.post(reverse("lookups:rerun", args=[first.pk]), {"local_only": "on"})
+            self.client.post(reverse("lookups:rerun", args=[first.pk]), {})
+        self.assertEqual(list(Lookup.objects.order_by("pk").values_list("local_only", flat=True)), [True, True, False])
+
+    def test_task_passes_local_only_to_collectors(self):
+        from .tasks import run_lookup
+        lookup = Lookup.objects.create(kind="ip", query="8.8.8.8", local_only=True)
+        seen = {}
+
+        async def fake_collect(kind, query, on_result=None, **kwargs):
+            seen.update(kwargs)
+            return []
+
+        with mock.patch("lookups.tasks.collect", fake_collect), mock.patch("lookups.tasks.llm.write_report", return_value=""):
+            run_lookup(lookup.pk)
+        self.assertTrue(seen["local_only"])
