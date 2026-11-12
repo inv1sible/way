@@ -385,9 +385,10 @@ def _other_runs(request, lookup):
     return [run for run in reversed(runs) if run.pk != lookup.pk]
 
 
-def compare_members(lookup):
-    """Verglichene Analysen in der Reihenfolge ihres ursprünglichen Datums (gelöschte fehlen)."""
-    return list(lookup.compared.select_related("created_by").order_by("created_at"))
+def compare_members(request, lookup):
+    """Verglichene Analysen in der Reihenfolge ihres ursprünglichen Datums (gelöschte fehlen). Auch hier nur, was
+    der Nutzer sehen darf, unabhängig davon, wer den Vergleich angelegt hat."""
+    return list(_visible(request).filter(pk__in=lookup.compared.values("pk")).order_by("created_at"))
 
 
 def compare_places(members):
@@ -400,7 +401,7 @@ def compare_places(members):
 def detail(request, pk):
     lookup = get_object_or_404(_visible(request), pk=pk)
     if lookup.kind == Lookup.Kind.COMPARE:
-        members = compare_members(lookup)
+        members = compare_members(request, lookup)
         for member in members:
             member.sorted_sources = sorted(member.sources, key=lambda item: str(item.get("source", "")).casefold())
         return render(request, "lookups/compare.html", {
@@ -435,7 +436,8 @@ def report_pdf(request, pk):
         language = translation.get_language() or "de"
     language = "en" if language.lower().startswith("en") else "de"
     with translation.override(language):
-        content = pdf.render(lookup, request)
+        members = compare_members(request, lookup) if lookup.kind == Lookup.Kind.COMPARE else None
+        content = pdf.render(lookup, request, members=members)
         filename = pdf.filename(lookup, language)
     response = HttpResponse(content, content_type="application/pdf")
     response["Content-Disposition"] = f'attachment; filename="{filename}"'
@@ -498,7 +500,7 @@ def rerun(request, pk):
     lookup = get_object_or_404(_visible(request), pk=pk)
     if lookup.kind == Lookup.Kind.COMPARE:
         # Neu vergleichen: dieselben, noch vorhandenen Analysen; neuere Läufe derselben Abfragen wählt man im Verlauf.
-        members = [member for member in compare_members(lookup) if member.status == Lookup.Status.DONE]
+        members = [member for member in compare_members(request, lookup) if member.status == Lookup.Status.DONE]
         if len(members) < 2:
             messages.error(request, ui_text("Es sind keine zwei verglichenen Analysen mehr vorhanden.",
                                             "Fewer than two of the compared analyses still exist."))

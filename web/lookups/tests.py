@@ -1021,7 +1021,7 @@ class PdfTests(TestCase):
     def test_pdf_uses_requested_global_language(self):
         self.client.force_login(self.user)
         from . import pdf
-        with mock.patch.object(pdf, "render", side_effect=lambda *_: translation.get_language().encode()) as render:
+        with mock.patch.object(pdf, "render", side_effect=lambda *_, **__: translation.get_language().encode()) as render:
             response = self.client.get(f"{reverse('lookups:pdf', args=[self.lookup.pk])}?language=en")
         self.assertEqual(response.content, b"en")
         self.assertEqual(response["Content-Language"], "en")
@@ -2922,7 +2922,7 @@ class CompareTests(TestCase):
                                            report_md=f"Passt [#{self.older.pk}].")
         comparison.compared.set([self.newer, self.older])
         with mock.patch("lookups.geo._tile", return_value=_png()), mock.patch("lookups.pdf.HTML") as html:
-            pdf.render(comparison, None)
+            pdf.render(comparison, None, members=[self.older, self.newer])
         text = html.call_args.kwargs["string"]
         self.assertIn('src="way-asset:map.png"', text)
         self.assertIn(f'href="#a{self.older.pk}"', text)
@@ -2945,3 +2945,13 @@ class CompareTests(TestCase):
         self.assertEqual([p["analyse"] for p in places["punkte"]], [self.older.pk, self.newer.pk])
         self.assertEqual(places["abstaende"][0]["km"], round(geo.distance_km(*places["punkte"])))
         self.assertGreater(places["max_abstand_km"], 400)
+
+    def test_members_are_filtered_by_visibility_when_shown(self):
+        other = get_user_model().objects.create_user("fremd2", password="x")
+        foreign = Lookup.objects.create(kind="ip", query="192.0.2.9", created_by=other, status=Lookup.Status.DONE,
+                                        report_md="Geheim-Bericht")
+        comparison = Lookup.objects.create(kind="compare", query="Vergleich", created_by=self.user, status=Lookup.Status.DONE)
+        comparison.compared.set([self.older, foreign])
+        page = self.client.get(reverse("lookups:detail", args=[comparison.pk]))
+        self.assertNotContains(page, "Geheim-Bericht")
+        self.assertContains(page, f'id="a{self.older.pk}"')
