@@ -20,7 +20,7 @@
   <div data-options="network">
   <label class="check opt" data-ip-only><input type="checkbox" name="local_only">
     <span>{% ui 'Nur lokal' 'Local only' %}
-      <span class="muted">({% ui 'keine externen Anfragen: lokale GeoIP-Datenbank, eigene frühere Analysen und lokales KI-Modell' 'no external requests: local GeoIP database, your previous analyses and the local AI model' %})</span></span></label>
+      <span class="muted">({% ui 'die Adresse geht an keinen Drittanbieter: lokale GeoIP-Datenbank, eigene frühere Analysen und lokales KI-Modell' 'the address is not sent to any third party: local GeoIP database, your previous analyses and the local AI model' %})</span></span></label>
   <label class="opt-date">{% ui 'Stand (optional): Rückblick auf ein Datum' 'Reference date (optional): historical view' %}
     <input type="date" name="asof" min="2000-01-01" max="{{ today }}">
     <span class="muted">{% ui 'BGP- und Passive-DNS-Historie zum Datum, dazu der Verlauf deiner früheren Analysen' 'BGP and passive-DNS history for that date, plus your previous analyses' %}</span></label>

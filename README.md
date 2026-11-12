@@ -17,8 +17,9 @@ Analysis data stays on your server except for queries sent to the selected provi
   TLS certificates, web headers, and port scans are optionally available for registered owned systems.
   A **location map** (OpenStreetMap) shows every source's coordinates with an accuracy circle, reported by the
   source or estimated from city, region, or country level; the PDF contains the map image with a legend.
-  The **Local only** option analyzes an IP address without any external request: a local GeoIP database
-  (DB-IP Lite, or MaxMind GeoLite2 if provided), your previous analyses, and the local language model.
+  The **Local only** option analyzes an IP address without sending it to any third party or to the address
+  itself: a local GeoIP database (DB-IP Lite, or MaxMind GeoLite2 if provided), your previous analyses, and the
+  local language model. Map tiles are still loaded, since they reveal only a map area, not the queried address.
 - **History:** repeated analyses of the same query are grouped and compared for changed addresses, ports,
   reputation, and risk. A historical date can optionally add BGP and passive-DNS history. Available historical DNS
   observations appear in the detail page and PDF with readable dates, times, and source attribution.

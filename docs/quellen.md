@@ -104,8 +104,10 @@ web metadata, and the selected router profile. Port scan can add Nmap for an aut
   numbered points with an accuracy circle. A radius reported by the source (GeoLite2 `accuracy_radius`) is used as
   is; otherwise it is estimated: city 25 km, region 100 km, country 500 km. The map is computed from the raw data,
   independent of the AI report; the report receives the same points as "Standortabschätzung (berechnet)". The PDF
-  map image is assembled on the server from OpenStreetMap tiles, which are cached for seven days.
-- **Local only** (IP addresses) runs only the address classification, the local GeoIP database, your previous
+  map image is assembled on the server from OpenStreetMap tiles, which are cached for seven days. Tiles are loaded
+  in Local only mode too: they reveal a map area, not the queried address.
+- **Local only** (IP addresses) sends the address to no third party and does not contact it (no reverse DNS, whose
+  PTR query reaches the address owner's name servers). It runs only the address classification, the local GeoIP database, your previous
   analyses, and the report through `OLLAMA_URL`. It cannot be combined with active checks or port scans and is not
   offered for hostnames, which already need external DNS. `python manage.py update_geoip` downloads DB-IP Lite
   (CC BY 4.0) at every web start when the files are missing or older than 30 days; that download reveals no queried

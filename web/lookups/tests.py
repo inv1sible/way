@@ -2788,15 +2788,16 @@ class GeoViewTests(TestCase):
         with self.assertRaises(ValueError):
             fetcher.fetch("way-asset:other.png")
 
-    def test_local_only_pdf_fetches_no_tiles(self):
+    def test_local_only_pdf_keeps_osm_basemap(self):
+        # Kartenkacheln verraten nur einen Kartenausschnitt, nicht die Adresse: auch bei „Nur lokal“ erlaubt.
         from . import pdf
         Lookup.objects.filter(pk=self.lookup.pk).update(local_only=True)
         self.lookup.refresh_from_db()
-        with mock.patch("lookups.geo._tile", side_effect=AssertionError("tile fetched")), \
+        with mock.patch("lookups.geo._tile", return_value=_png()) as tile, \
                 mock.patch("lookups.pdf.HTML") as html:
             pdf.render(self.lookup, None)
+        self.assertTrue(tile.called)
         self.assertIn('src="way-asset:map.png"', html.call_args.kwargs["string"])
-        self.assertIn("ohne Kartenhintergrund", html.call_args.kwargs["string"])
 
     def test_pdf_renders_with_map(self):
         with mock.patch("lookups.geo._tile", return_value=_png()):

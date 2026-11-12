@@ -15,6 +15,6 @@
   </table>
   </div>
   <p class="muted">{% if geo.punkte|length > 1 %}{% ui 'Größter Abstand zwischen den Angaben' 'Largest distance between the entries' %}: {{ geo.max_abstand_km }} km · {% endif %}{% ui 'IP-Standorte beschreiben den Netzbereich, nicht das Gerät.' 'IP locations describe the network range, not the device.' %}
-    {% ui 'Kartenkacheln' 'Map tiles' %}: © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OpenStreetMap</a>{% if lookup.local_only %} · {% ui 'Die Kacheln lädt der Browser von OpenStreetMap; die Analyse selbst blieb lokal.' 'Your browser loads the tiles from OpenStreetMap; the analysis itself stayed local.' %}{% endif %}</p>
+    {% ui 'Kartenkacheln' 'Map tiles' %}: © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OpenStreetMap</a></p>
 </section>
 {% endif %}
