@@ -2788,6 +2788,16 @@ class GeoViewTests(TestCase):
         with self.assertRaises(ValueError):
             fetcher.fetch("way-asset:other.png")
 
+    def test_local_only_pdf_fetches_no_tiles(self):
+        from . import pdf
+        Lookup.objects.filter(pk=self.lookup.pk).update(local_only=True)
+        self.lookup.refresh_from_db()
+        with mock.patch("lookups.geo._tile", side_effect=AssertionError("tile fetched")), \
+                mock.patch("lookups.pdf.HTML") as html:
+            pdf.render(self.lookup, None)
+        self.assertIn('src="way-asset:map.png"', html.call_args.kwargs["string"])
+        self.assertIn("ohne Kartenhintergrund", html.call_args.kwargs["string"])
+
     def test_pdf_renders_with_map(self):
         with mock.patch("lookups.geo._tile", return_value=_png()):
             response = self.client.get(reverse("lookups:pdf", args=[self.lookup.pk]))

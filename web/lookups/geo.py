@@ -129,8 +129,9 @@ def _tile(client, zoom, x, y):
     return response.content
 
 
-def static_map(points, width=900, height=440):
-    """PNG mit OSM-Hintergrund, Genauigkeitskreisen und nummerierten Punkten; None, wenn Kacheln fehlen."""
+def static_map(points, width=900, height=440, tiles=True):
+    """PNG mit OSM-Hintergrund, Genauigkeitskreisen und nummerierten Punkten; None, wenn Kacheln fehlen.
+    Mit tiles=False (Nur lokal) ohne Netzwerkzugriff auf neutralem Hintergrund."""
     from PIL import Image, ImageDraw, ImageFont
 
     if not points:
@@ -138,14 +139,14 @@ def static_map(points, width=900, height=440):
     zoom, cx, cy = _fit(points, width, height)
     left, top = cx - width / 2, cy - height / 2
     image = Image.new("RGBA", (width, height), "#e8e8e8")
-    tiles = 2 ** zoom
+    count = 2 ** zoom
     try:
         with httpx.Client(timeout=10, headers={"User-Agent": USER_AGENT}) as client:
-            for ty in range(int(top // 256), int((top + height) // 256) + 1):
-                if not 0 <= ty < tiles:
+            for ty in range(int(top // 256), int((top + height) // 256) + 1) if tiles else ():
+                if not 0 <= ty < count:
                     continue
                 for tx in range(int(left // 256), int((left + width) // 256) + 1):
-                    tile = Image.open(io.BytesIO(_tile(client, zoom, tx % tiles, ty))).convert("RGBA")
+                    tile = Image.open(io.BytesIO(_tile(client, zoom, tx % count, ty))).convert("RGBA")
                     image.paste(tile, (round(tx * 256 - left), round(ty * 256 - top)))
     except Exception:
         log.warning("OSM-Kacheln für das PDF nicht verfügbar", exc_info=True)
@@ -168,10 +169,11 @@ def static_map(points, width=900, height=440):
         x, y = x - left, y - top
         draw.ellipse((x - 10, y - 10, x + 10, y + 10), fill=point["farbe"], outline="white", width=2)
         draw.text((x, y), str(point["nr"]), fill="white", font=font, anchor="mm")
-    text_box = draw.textbbox((0, 0), ATTRIBUTION, font=small)
+    label = ATTRIBUTION if tiles else "Nur lokal: ohne Kartenhintergrund / local only: no basemap"
+    text_box = draw.textbbox((0, 0), label, font=small)
     w, h = text_box[2] - text_box[0], text_box[3] - text_box[1]
     draw.rectangle((width - w - 10, height - h - 8, width, height), fill=(255, 255, 255, 200))
-    draw.text((width - w - 5, height - h - 6), ATTRIBUTION, fill="#333", font=small)
+    draw.text((width - w - 5, height - h - 6), label, fill="#333", font=small)
     out = io.BytesIO()
     Image.alpha_composite(image, overlay).convert("RGB").save(out, "PNG", optimize=True)
     return out.getvalue()

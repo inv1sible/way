@@ -38,7 +38,8 @@ def filename(lookup, language="de"):
 
 def render(lookup, request):
     locations, assets = geo_data(lookup.sources), {}
-    if locations and (image := geo.static_map(locations["punkte"])):
+    # Nur lokal: keine Kacheln vom Server abrufen, sonst erführe OSM den Kartenausschnitt dieser Analyse.
+    if locations and (image := geo.static_map(locations["punkte"], tiles=not lookup.local_only)):
         assets["way-asset:map.png"] = image
         locations["bild"] = True
     html = render_to_string(
