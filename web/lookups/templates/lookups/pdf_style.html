@@ -1,0 +1,39 @@
+{% load ui_tags %}<style>
+  @page {
+    size: A4;
+    margin: 22mm 18mm 20mm;
+    @top-left { content: "Who Are You · {% ui 'Analysebericht' 'Analysis report' %}"; font-family: "DejaVu Sans", sans-serif; font-size: 8pt; color: #5d6673; }
+    @top-right { content: "{{ lookup.query|truncatechars:60 }}"; font-family: "DejaVu Sans", sans-serif; font-size: 8pt; color: #5d6673; }
+    @bottom-left { content: "{% ui 'Erstellt' 'Created' %} {{ generated_at|ui_datetime }} · {% ui 'vertraulich' 'confidential' %}"; font-family: "DejaVu Sans", sans-serif; font-size: 8pt; color: #5d6673; }
+    @bottom-right { content: "{% ui 'Seite' 'Page' %} " counter(page) " {% ui 'von' 'of' %} " counter(pages); font-family: "DejaVu Sans", sans-serif; font-size: 8pt; color: #5d6673; }
+  }
+  body { font-family: "DejaVu Sans", sans-serif; font-size: 9.5pt; line-height: 1.45; color: #1b1f24; }
+  h1 { font-size: 18pt; margin: 0 0 2mm; word-break: break-all; }
+  h2 { font-size: 12pt; margin: 6mm 0 2mm; border-bottom: 0.5pt solid #d9dde3; padding-bottom: 1mm; }
+  .brand { color: #2557d6; font-weight: bold; font-size: 10pt; letter-spacing: .5pt; }
+  table { width: 100%; border-collapse: collapse; }
+  th, td { text-align: left; vertical-align: top; padding: 1.2mm 2mm; border-bottom: 0.5pt solid #e3e6ea; }
+  th { width: 32%; color: #5d6673; font-weight: normal; }
+  .risk { display: inline-block; padding: 0.4mm 3mm; border-radius: 3mm; border: 1pt solid currentColor; font-weight: bold; }
+  .risk-niedrig { color: #1f7a3d; } .risk-mittel { color: #a86400; } .risk-hoch { color: #c0262d; } .risk-unklar { color: #5d6673; }
+  .report h2 { font-size: 11pt; border: 0; margin-top: 5mm; }
+  .report ul { padding-left: 5mm; }
+  .report a { color: #2557d6; text-decoration: none; }
+  .note { font-size: 8pt; color: #5d6673; margin-top: 4mm; }
+  .ok { color: #1f7a3d; } .err { color: #c0262d; }
+  .appendix { page-break-before: always; }
+  .source { margin-bottom: 4mm; page-break-inside: auto; }
+  .source h3 { font-size: 10pt; margin: 0 0 1mm; page-break-after: avoid; }
+  .flags { border: 0.5pt solid #d9dde3; padding: 2mm 3mm; margin: 2mm 0; }
+  .flags ul { margin: 1mm 0 0; padding-left: 4mm; }
+  table.ports th { width: auto; }
+  .hits li { margin-bottom: 2mm; }
+  .hits .url { color: #2557d6; font-size: 8pt; word-break: break-all; }
+  .hits .snippet { color: #5d6673; font-size: 8.5pt; }
+  .geo img { width: 100%; border: 0.5pt solid #d9dde3; margin-bottom: 2mm; }
+  .geo th { width: auto; }
+  .geo-nr { display: inline-block; width: 4.5mm; height: 4.5mm; line-height: 4.5mm; border-radius: 50%; color: #fff;
+            font-weight: bold; font-size: 7.5pt; text-align: center; }
+  pre { font-family: "DejaVu Sans Mono", monospace; font-size: 7pt; white-space: pre-wrap; word-break: break-all;
+        background: #f6f7f9; border: 0.5pt solid #e3e6ea; padding: 2mm; margin: 0; }
+</style>

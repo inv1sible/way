@@ -38,6 +38,7 @@
     rev = data.rev;
     if (data.unchanged) return;
     for (const [name, fragment] of Object.entries(data.fragments)) setFragment(name, fragment);
+    if (!sources) return;  // Vergleich: keine eigenen Rohdaten
     data.sources.forEach(setSource);
     [...sources.children]
       .sort((left, right) => left.dataset.key.localeCompare(right.dataset.key, undefined, { sensitivity: "base" }))

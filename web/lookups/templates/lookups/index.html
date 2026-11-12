@@ -4,8 +4,8 @@
 {% if shared %}<p class="muted">{% ui 'Geteilt' 'Shared' %}: „{{ shared|truncatechars:160 }}“</p>{% endif %}
 <form method="post" action="{% url 'lookups:index' %}" id="analyze">{% csrf_token %}
   <div class="search">
-    <input name="q" value="{{ q }}" placeholder="{% ui 'E-Mail, Rufnummer, IP-Adresse oder Hostname' 'Email, phone number, IP address or hostname' %}"
-           autocomplete="off" required>
+    <textarea name="q" rows="1" placeholder="{% ui 'E-Mail, Rufnummer, IP-Adresse oder Hostname (bis zu 10, getrennt durch Komma oder Zeile)' 'Email, phone number, IP address or hostname (up to 10, separated by comma or line)' %}"
+           autocomplete="off" spellcheck="false" required>{{ q }}</textarea>
   </div>
   <div class="opts">
   <div data-options="email">
@@ -49,24 +49,29 @@
   <h2>{% ui 'Verlauf' 'History' %}{% if total %} <span class="count">({{ total }})</span>{% endif %}</h2>
   {% if lookups %}
   <div class="pick-bar">
-    <button type="button" class="secondary small" data-pick-start>{% ui 'Auswählen' 'Select' %}</button>
+    {% ui 'Auswählen' 'Select' as label %}<button type="button" class="secondary small" data-pick-start title="{{ label }}" aria-label="{{ label }}">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="3"/><path d="m8 12 3 3 5-6"/></svg><span class="label">{{ label }}</span></button>
     <span class="muted" data-pick-count></span>
-    <button type="button" class="secondary small" data-pick-copy disabled
-        title="{% ui 'Als Tabelle kopieren (tabulatorgetrennt, z. B. für Excel)' 'Copy as table (tab-separated, e.g. for Excel)' %}">{% ui 'Kopieren' 'Copy' %}</button>
-    <button class="danger small" data-pick-delete disabled>{% ui 'Löschen' 'Delete' %}</button>
-    <button type="button" class="secondary small" data-pick-cancel>{% ui 'Abbrechen' 'Cancel' %}</button>
+    {% ui 'Vergleichen (2 bis 10 abgeschlossene Analysen)' 'Compare (2 to 10 completed analyses)' as title %}{% ui 'Vergleichen' 'Compare' as label %}<button class="secondary small" data-pick-compare formaction="{% url 'lookups:compare' %}" disabled title="{{ title }}" aria-label="{{ label }}">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="7" height="16" rx="1.5"/><rect x="14" y="4" width="7" height="16" rx="1.5"/></svg><span class="label">{{ label }}</span></button>
+    {% ui 'Als Tabelle kopieren (tabulatorgetrennt, z. B. für Excel)' 'Copy as table (tab-separated, e.g. for Excel)' as title %}{% ui 'Kopieren' 'Copy' as label %}<button type="button" class="secondary small" data-pick-copy disabled title="{{ title }}" aria-label="{{ label }}">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/></svg><span class="label">{{ label }}</span></button>
+    {% ui 'Löschen' 'Delete' as label %}<button class="danger small" data-pick-delete disabled title="{{ label }}" aria-label="{{ label }}">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14M10 11v6M14 11v6"/></svg><span class="label">{{ label }}</span></button>
+    {% ui 'Abbrechen' 'Cancel' as label %}<button type="button" class="secondary small" data-pick-cancel title="{{ label }}" aria-label="{{ label }}">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg><span class="label">{{ label }}</span></button>
   </div>
   {% endif %}
 </div>
 {% if lookups %}
-<p class="muted pick-hint">{% ui 'Lange auf eine Analyse drücken, um sie auszuwählen.' 'Press and hold an analysis to select it.' %}</p>
+<p class="muted pick-hint">{% ui 'Lange auf eine Analyse drücken, um sie auszuwählen, z. B. zum Vergleichen, Kopieren oder Löschen.' 'Press and hold an analysis to select it, e.g. to compare, copy, or delete.' %}</p>
 <div class="table-wrap">
 <table class="tiles">
   <thead><tr><th class="t-pick"></th><th>{% ui 'Abfrage' 'Query' %}</th><th>{% ui 'Typ' 'Type' %}</th><th>Status</th><th>{% ui 'Zeit' 'Time' %}</th>{% if user.is_staff %}<th>{% ui 'Nutzer' 'User' %}</th>{% endif %}</tr></thead>
   <tbody>
   {% for l in lookups %}
     <tr class="tile-kind-{{ l.kind }}" data-pick-row>
-      <td class="t-pick"><input type="checkbox" name="ids" value="{{ l.runs|join:',' }}" aria-label="{{ l.query }} {% ui 'auswählen' 'select' %}"
+      <td class="t-pick"><input type="checkbox" name="ids" value="{{ l.runs|join:',' }}" data-kind="{{ l.kind }}" aria-label="{{ l.query }} {% ui 'auswählen' 'select' %}"
           {% if l.is_running %}disabled title="{% ui 'Läuft noch, kann erst danach gelöscht werden' 'Still running; it can be deleted after completion' %}"{% endif %}></td>
       <td class="t-query"><a href="{% url 'lookups:detail' l.pk %}">{{ l.query }}</a>{% if l.note %} <span class="t-note">({{ l.note }})</span>{% endif %}</td>
       <td class="t-kind">{{ l.kind|kind_label }}</td>

@@ -1,5 +1,5 @@
 {% load report_tags ui_tags i18n %}{% get_current_language as LANGUAGE_CODE %}{% if lookup.report_md %}
-<article class="card report" lang="{{ LANGUAGE_CODE }}">{{ lookup.report_md|localized_report|markdown }}</article>
+<article class="card report" lang="{{ LANGUAGE_CODE }}">{% if lookup.kind == "compare" %}{{ lookup.report_md|localized_report|analysis_links|markdown }}{% else %}{{ lookup.report_md|localized_report|markdown }}{% endif %}</article>
 <p class="muted external-link-notice">{% ui 'Externe Links im Bericht öffnen Quellen über deine aktuelle Internetverbindung.' 'External links in the report open sources through your current Internet connection.' %}</p>
 {% endif %}{% with observations=lookup.sources|historical_dns %}{% if observations %}
 <article class="card report historical-dns">

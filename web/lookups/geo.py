@@ -90,6 +90,29 @@ def summary(sources):
     return {"punkte": points, "max_abstand_km": round(spread)}
 
 
+def best(points):
+    """Genaueste Angabe: gemeldeter Radius vor geschätztem, dann der kleinste Radius."""
+    return min(points, key=lambda point: (point["geschaetzt"], point["genauigkeit_km"])) if points else None
+
+
+def comparison(members):
+    """Je verglichener Analyse ihr genauester Standort (Farbe und Nummer je Analyse) und die Abstände aller Paare."""
+    points = []
+    for index, member in enumerate(members):
+        if not (found := best(locations(member.sources))):
+            continue
+        points.append({**found, "nr": index + 1, "farbe": COLORS[index % len(COLORS)], "analyse": member.pk,
+                       "abfrage": member.query, "herkunft": found["quelle"],
+                       "quelle": f"#{member.pk} {member.query} · {found['quelle']}"})
+    if not points:
+        return None
+    pairs = [{"a": a, "b": b, "km": round(distance_km(a, b)),
+              # Überlappen sich die Genauigkeitskreise, können beide Angaben denselben Ort meinen.
+              "ueberlappend": distance_km(a, b) <= a["genauigkeit_km"] + b["genauigkeit_km"]}
+             for i, a in enumerate(points) for b in points[i + 1:]]
+    return {"punkte": points, "abstaende": pairs, "max_abstand_km": max((pair["km"] for pair in pairs), default=0)}
+
+
 # --- Statisches Kartenbild für das PDF (OSM-Kacheln, im Server zusammengesetzt) ---
 
 def _world(lat, lon, zoom):

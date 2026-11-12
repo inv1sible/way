@@ -1,0 +1,94 @@
+{% extends "base.html" %}
+{% load static ui_tags report_tags %}
+{% block title %}{{ lookup.query }} · Who Are You{% endblock %}
+{% block head %}
+  {% if places %}
+    <link rel="stylesheet" href="{% static 'lookups/vendor/leaflet/leaflet.css' %}">
+    <script src="{% static 'lookups/vendor/leaflet/leaflet.js' %}" defer></script>
+    <script src="{% static 'lookups/map.js' %}" defer></script>
+  {% endif %}
+  {% if lookup.is_running %}
+    <script src="{% static 'lookups/live.js' %}" defer></script>
+    <noscript><meta http-equiv="refresh" content="5"></noscript>
+  {% endif %}
+{% endblock %}
+{% block content %}
+<p><a href="{% url 'lookups:index' %}">← Back</a></p>
+<div class="title-row">
+  <h1>{{ lookup.query }}</h1>
+  <div class="toolbar">
+    <div id="l-actions" data-h="{{ fragments.actions.h }}">{{ fragments.actions.html }}</div>
+  </div>
+</div>
+{% if not lookup.is_running %}
+<div id="rerun-pop" popover class="note-pop rerun-pop">
+  <form method="post" action="{% url 'lookups:rerun' lookup.pk %}">{% csrf_token %}
+    <label><strong>{% ui 'Neu vergleichen' 'Compare again' %}</strong></label>
+    <p class="muted note-tip">{% ui 'Die KI vergleicht dieselben Analysen erneut. Für neuere Ergebnisse die Ziele zuerst neu analysieren und dann im Verlauf zusammen auswählen.' 'The AI compares the same analyses again. For newer results, analyze the targets again first and then select them together in the history.' %}</p>
+    <button class="small">{% ui 'Vergleich starten' 'Start comparison' %}</button>
+  </form>
+</div>
+{% endif %}
+
+<div id="live" data-url="{% url 'lookups:status' lookup.pk %}" data-rev="{{ rev }}"{% if lookup.is_running %} data-running="1"{% endif %}>
+  <p class="muted" id="l-meta" data-h="{{ fragments.meta.h }}">{{ fragments.meta.html }}</p>
+  <div class="progress" id="l-progress" data-h="{{ fragments.progress.h }}">{{ fragments.progress.html }}</div>
+  <p class="muted" id="l-conn" hidden>{% ui 'Verbindung unterbrochen – neuer Versuch läuft …' 'Connection interrupted – retrying …' %}</p>
+  <div id="l-error" data-h="{{ fragments.error.h }}">{{ fragments.error.html }}</div>
+  <div id="l-report" data-h="{{ fragments.report.h }}">{{ fragments.report.html }}</div>
+</div>
+
+{% if places %}
+<section class="card result-card geo">
+  <h2>{% ui 'Standorte im Vergleich' 'Locations compared' %}</h2>
+  <div class="geo-map" data-points="{{ places.json }}" role="img" aria-label="{% ui 'Karte der verglichenen Standorte' 'Map of the compared locations' %}"></div>
+  <div class="table-wrap keep">
+  <table class="geo-legend">
+    <thead><tr><th></th><th>{% ui 'Analyse' 'Analysis' %}</th><th>{% ui 'Ort' 'Place' %}</th><th>{% ui 'Genauigkeit' 'Accuracy' %}</th><th>{% ui 'Quelle' 'Source' %}</th></tr></thead>
+    <tbody>
+    {% for p in places.punkte %}
+      <tr><td><span class="geo-nr" style="background:{{ p.farbe }}">{{ p.nr }}</span></td>
+          <td><a href="#a{{ p.analyse }}">#{{ p.analyse }}</a> {{ p.abfrage }}</td>
+          <td><a href="{{ p.osm }}" target="_blank" rel="noopener noreferrer">{{ p.ort|default:"–" }}</a></td>
+          <td>± {{ p.genauigkeit_km|floatformat:0 }} km{% if p.geschaetzt %} <span class="muted">({% ui 'geschätzt' 'estimated' %})</span>{% endif %}</td>
+          <td class="muted">{{ p.herkunft }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% if places.abstaende %}
+  <div class="table-wrap keep">
+  <table class="geo-legend">
+    <thead><tr><th>{% ui 'Paar' 'Pair' %}</th><th>{% ui 'Abstand' 'Distance' %}</th><th></th></tr></thead>
+    <tbody>
+    {% for pair in places.abstaende %}
+      <tr><td><span class="geo-nr" style="background:{{ pair.a.farbe }}">{{ pair.a.nr }}</span> ↔ <span class="geo-nr" style="background:{{ pair.b.farbe }}">{{ pair.b.nr }}</span></td>
+          <td>{{ pair.km }} km</td>
+          <td class="muted">{% if pair.ueberlappend %}{% ui 'Genauigkeitskreise überlappen' 'accuracy circles overlap' %}{% endif %}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% endif %}
+  <p class="muted">{% ui 'Je Analyse die genaueste Standortangabe. IP-Standorte beschreiben den Netzbereich, nicht das Gerät.' 'The most precise location per analysis. IP locations describe the network range, not the device.' %}
+    {% ui 'Kartenkacheln' 'Map tiles' %}: © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OpenStreetMap</a></p>
+</section>
+{% endif %}
+
+<h2 class="compare-members-head">{% ui 'Verglichene Analysen' 'Compared analyses' %} ({{ members|length }})</h2>
+{% if not members %}<p class="muted">{% ui 'Die verglichenen Analysen wurden gelöscht.' 'The compared analyses have been deleted.' %}</p>{% endif %}
+{% for member in members %}
+<section class="card result-card compare-member tile-kind-{{ member.kind }}" id="a{{ member.pk }}">
+  <h2><a href="{% url 'lookups:detail' member.pk %}">#{{ member.pk }} {{ member.query }}</a></h2>
+  <p class="muted">{{ member.kind|kind_label }} · {{ member.created_at|ui_datetime }}{% if member.as_of %} · {% ui 'Stand' 'As of' %} {{ member.as_of|ui_date }}{% endif %}{% if member.local_only %} · {% ui 'nur lokal' 'local only' %}{% endif %}</p>
+  {% if member.note %}<p class="note">{{ member.note }}</p>{% endif %}
+  {% if member.report_md %}<div class="report">{{ member.report_md|localized_report|markdown }}</div>{% endif %}
+  {% if member.sorted_sources %}
+  <details class="compare-raw">
+    <summary>{% ui 'Rohdaten' 'Raw data' %} ({{ member.sorted_sources|length }})</summary>
+    {% for s in member.sorted_sources %}<div class="src">{% include "lookups/live/source.html" %}</div>{% endfor %}
+  </details>
+  {% endif %}
+</section>
+{% endfor %}
+{% endblock %}

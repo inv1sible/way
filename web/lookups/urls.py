@@ -7,6 +7,7 @@ app_name = "lookups"
 urlpatterns = [
     path("", views.index, name="index"),
     path("loeschen/", views.delete, name="delete"),
+    path("vergleichen/", views.compare, name="compare"),
     path("teilen/", views.share, name="share"),
     path("analyse/<int:pk>/", views.detail, name="detail"),
     path("analyse/<int:pk>/status/", views.status, name="status"),

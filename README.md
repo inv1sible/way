@@ -20,6 +20,11 @@ Analysis data stays on your server except for queries sent to the selected provi
   The **Local only** option analyzes an IP address without sending it to any third party or to the address
   itself: a local GeoIP database (DB-IP Lite, or MaxMind GeoLite2 if provided), your previous analyses, and the
   local language model. Map tiles are still loaded, since they reveal only a map area, not the queried address.
+- **Several targets and comparison:** up to 10 targets can be entered at once, separated by comma or line break;
+  each becomes its own analysis. In the history, selecting 2 to 10 completed analyses offers **Compare**: the local
+  language model writes a comparison report that references each analysis, with a shared map, pairwise distances,
+  and every individual result in original date order. The comparison uses only stored results and sends nothing to
+  third parties. The PDF contains the comparison and the raw data of every compared analysis.
 - **History:** repeated analyses of the same query are grouped and compared for changed addresses, ports,
   reputation, and risk. A historical date can optionally add BGP and passive-DNS history. Available historical DNS
   observations appear in the detail page and PDF with readable dates, times, and source attribution.

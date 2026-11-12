@@ -1,11 +1,12 @@
 import asyncio
+from datetime import timedelta
 from unittest import mock
 
 from django.contrib.auth import get_user_model
 from django.db import connection
 from django.test import SimpleTestCase, TestCase, TransactionTestCase, override_settings
 from django.urls import reverse
-from django.utils import translation
+from django.utils import timezone, translation
 
 from . import llm
 from .collectors import bnetza, censys, email, fritzbox, geoip, history, host, ip, ipinfo, netlas, phone, router, shodan, speedport, threatintel
@@ -978,7 +979,7 @@ class PwaTests(TestCase):
     def test_share_prefills_form_without_starting_lookup(self):
         self.client.force_login(get_user_model().objects.create_user("t", password="pw-123456"))
         response = self.client.get(reverse("lookups:share"), {"text": "Anruf von 0211 1234567"})
-        self.assertContains(response, 'value="0211 1234567"')
+        self.assertContains(response, ">0211 1234567</textarea>")
         self.assertFalse(Lookup.objects.exists())
 
     def test_share_post_with_vcard_without_csrf_token(self):
@@ -988,7 +989,7 @@ class PwaTests(TestCase):
         client.force_login(get_user_model().objects.create_user("t", password="pw-123456"))
         vcf = b"BEGIN:VCARD\r\nVERSION:3.0\r\nFN:Unbekannt\r\nTEL;TYPE=CELL:+49 176 1234\r\n 5678\r\nEND:VCARD\r\n"
         response = client.post(reverse("lookups:share"), {"files": SimpleUploadedFile("k.vcf", vcf, "text/vcard")})
-        self.assertContains(response, 'value="+49 176 12345678"')
+        self.assertContains(response, ">+49 176 12345678</textarea>")
         self.assertFalse(Lookup.objects.exists())
 
     def test_share_requires_login(self):
@@ -2804,3 +2805,143 @@ class GeoViewTests(TestCase):
             response = self.client.get(reverse("lookups:pdf", args=[self.lookup.pk]))
         self.assertEqual(response.status_code, 200)
         self.assertTrue(response.content.startswith(b"%PDF"))
+
+
+class MultiTargetTests(TestCase):
+    def setUp(self):
+        self.user = get_user_model().objects.create_user("multi", password="x")
+        self.client.force_login(self.user)
+
+    def _submit(self, q, **extra):
+        with mock.patch("lookups.views.run_lookup.delay") as delay, self.captureOnCommitCallbacks(execute=True):
+            response = self.client.post(reverse("lookups:index"), {"q": q, **extra})
+        return response, delay
+
+    def test_detect_many_splits_lines_commas_and_spaces_but_keeps_phone_numbers(self):
+        from .detect import detect_many
+        self.assertEqual(detect_many("+49 30 1234567"), [("phone", "+49301234567")])
+        self.assertEqual(detect_many("203.0.113.5\n198.51.100.7, example.com; 203.0.113.5"),
+                         [("ip", "203.0.113.5"), ("ip", "198.51.100.7"), ("host", "example.com")])
+        self.assertEqual(detect_many("203.0.113.5\nexample.com"), [("ip", "203.0.113.5"), ("host", "example.com")])
+        self.assertEqual(detect_many("203.0.113.5 198.51.100.7"), [("ip", "203.0.113.5"), ("ip", "198.51.100.7")])
+        self.assertEqual(detect_many("+49 30 1234567\n203.0.113.5"), [("phone", "+49301234567"), ("ip", "203.0.113.5")])
+        with self.assertRaisesMessage(ValueError, "„kein ziel“"):
+            detect_many("203.0.113.5, kein ziel")
+        with self.assertRaisesMessage(ValueError, "Höchstens 10"):
+            detect_many(", ".join(f"203.0.113.{n}" for n in range(1, 12)))
+
+    def test_several_targets_start_one_analysis_each(self):
+        response, delay = self._submit("203.0.113.5\nexample.com", local_only="")
+        self.assertRedirects(response, reverse("lookups:index"))
+        self.assertEqual(sorted(Lookup.objects.values_list("kind", "query")), [("host", "example.com"), ("ip", "203.0.113.5")])
+        self.assertEqual(delay.call_count, 2)
+
+    def test_local_only_and_active_options_are_checked_for_every_target(self):
+        response, _ = self._submit("203.0.113.5, example.com", local_only="on")
+        self.assertContains(response, "nur für IP-Adressen", status_code=400)
+        response, _ = self._submit("203.0.113.5, 198.51.100.7", active="on")
+        self.assertContains(response, "einzelnes Ziel", status_code=400)
+        self.assertFalse(Lookup.objects.exists())
+        self._submit("203.0.113.5, 198.51.100.7", local_only="on")
+        self.assertEqual(list(Lookup.objects.values_list("local_only", flat=True)), [True, True])
+
+    def test_index_offers_multiline_input_and_comparison(self):
+        Lookup.objects.create(kind="ip", query="203.0.113.5", created_by=self.user, status=Lookup.Status.DONE)
+        page = self.client.get(reverse("lookups:index"))
+        self.assertContains(page, '<textarea name="q"')
+        self.assertContains(page, "data-pick-compare")
+        self.assertContains(page, reverse("lookups:compare"))
+
+
+class CompareTests(TestCase):
+    def setUp(self):
+        self.user = get_user_model().objects.create_user("vergleich", password="x")
+        self.client.force_login(self.user)
+        done = Lookup.Status.DONE
+        self.older = Lookup.objects.create(kind="ip", query="203.0.113.5", created_by=self.user, status=done,
+                                           report_md="# Deutsch\n## Kurzfazit\nFrankfurt-Netz\n# English\n## Executive summary\nx",
+                                           sources=GeoTests.SOURCES[:1])
+        self.newer = Lookup.objects.create(kind="ip", query="198.51.100.7", created_by=self.user, status=done,
+                                           report_md="Berlin-Netz", sources=GeoTests.SOURCES[1:2])
+        Lookup.objects.filter(pk=self.older.pk).update(created_at=timezone.now() - timedelta(days=1))
+        self.older.refresh_from_db()
+
+    def _compare(self, *lookups):
+        with mock.patch("lookups.views.run_compare.delay") as delay, self.captureOnCommitCallbacks(execute=True):
+            response = self.client.post(reverse("lookups:compare"), {"ids": [f"{l.pk},999" for l in lookups]})
+        return response, delay
+
+    def test_selected_analyses_become_a_comparison(self):
+        response, delay = self._compare(self.newer, self.older)
+        comparison = Lookup.objects.get(kind="compare")
+        self.assertRedirects(response, reverse("lookups:detail", args=[comparison.pk]))
+        self.assertEqual(comparison.query, "Vergleich: 203.0.113.5, 198.51.100.7")
+        self.assertEqual(set(comparison.compared.all()), {self.older, self.newer})
+        delay.assert_called_once_with(comparison.pk)
+
+    def test_needs_two_visible_completed_analyses(self):
+        other = get_user_model().objects.create_user("fremd", password="x")
+        foreign = Lookup.objects.create(kind="ip", query="192.0.2.1", created_by=other, status=Lookup.Status.DONE)
+        running = Lookup.objects.create(kind="ip", query="192.0.2.2", created_by=self.user)
+        for pair in ((self.older,), (self.older, foreign), (self.older, running)):
+            self._compare(*pair)
+        self.assertFalse(Lookup.objects.filter(kind="compare").exists())
+
+    def test_task_writes_the_report_from_stored_results_only(self):
+        from . import tasks
+        comparison = Lookup.objects.create(kind="compare", query="Vergleich", created_by=self.user)
+        comparison.compared.set([self.newer, self.older])
+        with mock.patch("lookups.llm._chat", return_value="# Deutsch\nlaut [#1]") as chat, \
+                mock.patch("lookups.collectors.collect", side_effect=AssertionError("Abfrage")):
+            tasks.run_compare(comparison.pk)
+        comparison.refresh_from_db()
+        self.assertEqual(comparison.status, Lookup.Status.DONE)
+        prompt = chat.call_args.args[1]
+        self.assertLess(prompt.index(f"#{self.older.pk}"), prompt.index(f'"#{self.newer.pk}"'))
+        self.assertIn("Frankfurt-Netz", prompt)
+        self.assertNotIn("Executive summary", prompt)
+        self.assertIn('"abstaende"', prompt)
+
+    def test_detail_shows_report_links_map_and_members_by_date(self):
+        comparison = Lookup.objects.create(kind="compare", query="Vergleich", created_by=self.user, status=Lookup.Status.DONE,
+                                           report_md=f"# Deutsch\n## Kurzfazit\nPasst [ #{self.older.pk}, #{self.newer.pk} ].")
+        comparison.compared.set([self.newer, self.older])
+        page = self.client.get(reverse("lookups:detail", args=[comparison.pk]))
+        html = page.content.decode()
+        self.assertIn(f'href="{reverse("lookups:detail", args=[self.older.pk])}"', html)
+        self.assertIn('class="geo-map"', html)
+        self.assertLess(html.index(f'id="a{self.older.pk}"'), html.index(f'id="a{self.newer.pk}"'))
+        self.assertIn("Rohdaten", html)
+        self.assertIn("Lokale GeoIP-Datenbank", html)
+        status = self.client.get(reverse("lookups:status", args=[comparison.pk])).json()
+        self.assertIn("report", status["fragments"])
+
+    def test_pdf_contains_comparison_map_and_raw_data_of_each_member(self):
+        from . import pdf
+        comparison = Lookup.objects.create(kind="compare", query="Vergleich", created_by=self.user, status=Lookup.Status.DONE,
+                                           report_md=f"Passt [#{self.older.pk}].")
+        comparison.compared.set([self.newer, self.older])
+        with mock.patch("lookups.geo._tile", return_value=_png()), mock.patch("lookups.pdf.HTML") as html:
+            pdf.render(comparison, None)
+        text = html.call_args.kwargs["string"]
+        self.assertIn('src="way-asset:map.png"', text)
+        self.assertIn(f'href="#a{self.older.pk}"', text)
+        self.assertIn("ip-api.com (Geo/ASN)", text)
+        self.assertIn("Frankfurt-Netz", text)
+        with mock.patch("lookups.geo._tile", return_value=_png()):
+            response = self.client.get(reverse("lookups:pdf", args=[comparison.pk]))
+        self.assertTrue(response.content.startswith(b"%PDF"))
+
+    def test_rerun_compares_the_same_analyses_again(self):
+        comparison = Lookup.objects.create(kind="compare", query="Vergleich", created_by=self.user, status=Lookup.Status.DONE)
+        comparison.compared.set([self.newer, self.older])
+        with mock.patch("lookups.views.run_compare.delay"), self.captureOnCommitCallbacks(execute=True):
+            self.client.post(reverse("lookups:rerun", args=[comparison.pk]))
+        again = Lookup.objects.filter(kind="compare").exclude(pk=comparison.pk).get()
+        self.assertEqual(set(again.compared.all()), {self.older, self.newer})
+
+    def test_comparison_places_and_distances(self):
+        places = geo.comparison([self.older, self.newer])
+        self.assertEqual([p["analyse"] for p in places["punkte"]], [self.older.pk, self.newer.pk])
+        self.assertEqual(places["abstaende"][0]["km"], round(geo.distance_km(*places["punkte"])))
+        self.assertGreater(places["max_abstand_km"], 400)

@@ -14,6 +14,7 @@ class Lookup(models.Model):
         PHONE = "phone", "Rufnummer"
         IP = "ip", "IP-Adresse"
         HOST = "host", "Hostname"
+        COMPARE = "compare", "Vergleich"
 
     class Status(models.TextChoices):
         PENDING = "pending", "Wartet"
@@ -84,6 +85,10 @@ class Lookup(models.Model):
     enrichment_of = models.ForeignKey(
         "self", null=True, blank=True, on_delete=models.SET_NULL, related_name="+", editable=False,
         verbose_name="angereichert aus",
+    )
+    # Nur bei kind=compare: die verglichenen Analysen; ihre Ergebnisse werden angezeigt, nicht kopiert.
+    compared = models.ManyToManyField(
+        "self", symmetrical=False, blank=True, related_name="comparisons", verbose_name="verglichene Analysen",
     )
 
     class Meta:

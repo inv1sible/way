@@ -86,6 +86,21 @@ def run_lookup(lookup_id):
         _update(lookup, status=Lookup.Status.FAILED, error=f"{type(exc).__name__}: {exc}", finished_at=timezone.now())
 
 
+@shared_task
+def run_compare(lookup_id):
+    """Vergleichsbericht aus den gespeicherten Ergebnissen; keine neuen Abfragen, nur das lokale Sprachmodell."""
+    lookup = Lookup.objects.get(pk=lookup_id)
+    try:
+        _update(lookup, status=Lookup.Status.ANALYZING, model=settings.OSINT_OLLAMA_MODEL)
+        members = list(lookup.compared.order_by("created_at"))
+        if len(members) < 2:
+            raise RuntimeError("Für einen Vergleich sind mindestens zwei vorhandene Analysen nötig.")
+        _update(lookup, status=Lookup.Status.DONE, report_md=llm.write_comparison(members), finished_at=timezone.now())
+    except Exception as exc:
+        log.exception("Vergleich %s fehlgeschlagen", lookup_id)
+        _update(lookup, status=Lookup.Status.FAILED, error=f"{type(exc).__name__}: {exc}", finished_at=timezone.now())
+
+
 @worker_ready.connect
 def fail_interrupted_lookups(**kwargs):
     """Analysen, die beim Start eines Workers noch als laufend markiert sind, wurden durch einen

@@ -35,7 +35,7 @@ h1 { font-size: 1.5rem; margin: .5rem 0; word-break: break-all; }
 h2 { font-size: 1.15rem; margin-top: 2rem; }
 .muted { color: var(--muted); }
 .card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 16px 20px; }
-input { font: inherit; padding: 10px 12px; border: 1px solid var(--border); border-radius: 6px; background: var(--surface); color: var(--text); width: 100%; }
+input, textarea { font: inherit; padding: 10px 12px; border: 1px solid var(--border); border-radius: 6px; background: var(--surface); color: var(--text); width: 100%; }
 button { font: inherit; padding: 10px 16px; border: 0; border-radius: 6px; background: var(--accent); color: #fff; cursor: pointer; }
 button.link { background: none; color: var(--accent); padding: 0; }
 .search { display: flex; gap: 8px; margin-top: 8px; }
@@ -88,6 +88,7 @@ header nav form:has(.icon) { display: inline-flex; align-items: center; gap: 6px
 .tile-kind-phone .t-kind { color: #c05621; font-weight: 600; }
 .tile-kind-ip .t-kind { color: #2563eb; font-weight: 600; }
 .tile-kind-host .t-kind { color: #15803d; font-weight: 600; }
+.tile-kind-compare .t-kind { color: #0e8a99; font-weight: 600; }
 
 /* Mobil: Tabellen werden zu Kacheln */
 @media (max-width: 640px) {
@@ -113,6 +114,7 @@ header nav form:has(.icon) { display: inline-flex; align-items: center; gap: 6px
   table.tiles tr.tile-kind-phone { border-left-color: #c05621; }
   table.tiles tr.tile-kind-ip { border-left-color: #2563eb; }
   table.tiles tr.tile-kind-host { border-left-color: #15803d; }
+  table.tiles tr.tile-kind-compare { border-left-color: #0e8a99; }
   .t-query { grid-area: query; font-weight: 600; font-size: 1.05rem; word-break: break-all; }
   .t-query a { color: var(--text); text-decoration: none; }
   .t-query a::after { content: ""; position: absolute; inset: 0; }  /* ganze Kachel antippbar */
@@ -179,7 +181,13 @@ button.copy { padding: 4px 12px; font-size: .85rem; }
 button.small { padding: 4px 12px; font-size: .85rem; }
 button.danger { background: var(--high); }
 button:disabled { opacity: .5; cursor: default; }
+.search textarea { resize: none; overflow: hidden; line-height: 1.4; }
+.pick-bar button { display: inline-flex; align-items: center; gap: 6px; }
+.pick-bar svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; flex: none; }
+.pick-bar button.flash-ok { background: var(--low); color: #fff; }
+.pick-bar button.flash-fail { background: var(--high); color: #fff; }
 .history:not(.picking) [data-pick-count], .history:not(.picking) [data-pick-delete], .history:not(.picking) [data-pick-copy],
+.history:not(.picking) [data-pick-compare],
 .history:not(.picking) [data-pick-cancel], .history.picking [data-pick-start] { display: none; }
 .pick-hint { margin: 0 0 8px; font-size: .85rem; }
 .history.picking .pick-hint { display: none; }
@@ -189,6 +197,11 @@ button:disabled { opacity: .5; cursor: default; }
 .history.picking [data-pick-row] { cursor: pointer; }
 .history.picking tr.picked td { background: color-mix(in srgb, var(--accent) 12%, transparent); }
 @media (max-width: 640px) {
+  /* Handy: nur die Symbole, rechtsbündig */
+  .pick-bar { margin-left: auto; }
+  .pick-bar .label, .pick-bar [data-pick-count] { display: none; }
+  .pick-bar button { width: 38px; height: 38px; padding: 0; justify-content: center; }
+  .pick-bar svg { width: 20px; height: 20px; }
   .history.picking .t-query a::after { content: none; }
   .t-pick { position: absolute; top: 12px; right: 14px; }
   .history.picking table.tiles tr { padding-right: 44px; }
@@ -248,3 +261,13 @@ a.button.small { padding: 4px 12px; font-size: .85rem; }
   border-radius: 50%; border: 2px solid #fff; color: #fff; font-weight: 700; font-size: 12px;
   box-shadow: 0 1px 3px rgba(0, 0, 0, .4); box-sizing: border-box; }
 .geo-legend td:first-child { width: 28px; }
+
+/* Vergleich: Einzelergebnisse, älteste zuerst */
+.compare-members-head { margin-top: 2rem; }
+.compare-member { border-left: 4px solid var(--neutral); }
+.compare-member.tile-kind-email { border-left-color: #805ad5; }
+.compare-member.tile-kind-phone { border-left-color: #c05621; }
+.compare-member.tile-kind-ip { border-left-color: #2563eb; }
+.compare-member.tile-kind-host { border-left-color: #15803d; }
+.compare-member h2 a { color: var(--text); text-decoration: none; overflow-wrap: anywhere; }
+details.compare-raw { background: var(--bg); }

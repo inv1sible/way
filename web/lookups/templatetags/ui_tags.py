@@ -35,6 +35,7 @@ def kind_label(value):
         "phone": ("Rufnummer", "Phone number"),
         "ip": ("IP-Adresse", "IP address"),
         "host": ("Hostname", "Hostname"),
+        "compare": ("Vergleich", "Comparison"),
     }
     pair = labels.get(value, (value, value))
     return pair[1] if english() else pair[0]

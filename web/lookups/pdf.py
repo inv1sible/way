@@ -37,6 +37,8 @@ def filename(lookup, language="de"):
 
 
 def render(lookup, request):
+    if lookup.kind == "compare":
+        return render_comparison(lookup, request)
     locations, assets = geo_data(lookup.sources), {}
     if locations and (image := geo.static_map(locations["punkte"])):
         assets["way-asset:map.png"] = image
@@ -45,6 +47,21 @@ def render(lookup, request):
         "lookups/report_pdf.html",
         {"lookup": lookup, "generated_at": timezone.now(), "scan": scan_data(lookup.sources),
          "history": history_data(lookup.sources), "geo": locations},
+        request=request,
+    )
+    return HTML(string=html, url_fetcher=BlockingFetcher(assets=assets, allowed_protocols=())).write_pdf()
+
+
+def render_comparison(lookup, request):
+    """Vergleich samt gemeinsamer Karte, danach je verglichener Analyse Bericht und Rohdaten (älteste zuerst)."""
+    members = list(lookup.compared.select_related("created_by").order_by("created_at"))
+    places, assets = geo.comparison(members), {}
+    if places and (image := geo.static_map(places["punkte"])):
+        assets["way-asset:map.png"] = image
+        places["bild"] = True
+    html = render_to_string(
+        "lookups/compare_pdf.html",
+        {"lookup": lookup, "generated_at": timezone.now(), "members": members, "places": places},
         request=request,
     )
     return HTML(string=html, url_fetcher=BlockingFetcher(assets=assets, allowed_protocols=())).write_pdf()

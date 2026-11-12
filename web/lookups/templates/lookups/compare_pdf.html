@@ -1,0 +1,83 @@
+{% load report_tags ui_tags i18n %}{% get_current_language as LANGUAGE_CODE %}<!doctype html>
+<html lang="{{ LANGUAGE_CODE }}">
+<head>
+<meta charset="utf-8">
+<title>{% ui 'Vergleichsbericht' 'Comparison report' %} {{ lookup.query }}</title>
+{% include "lookups/pdf_style.html" %}
+<style>
+  .member { page-break-before: always; }
+  .member h2 { font-size: 13pt; }
+</style>
+</head>
+<body>
+  <div class="brand">WHO ARE YOU</div>
+  <h1>{{ lookup.query }}</h1>
+
+  <table>
+    <tr><th>{% ui 'Typ' 'Type' %}</th><td>{{ lookup.kind|kind_label }}</td></tr>
+    <tr><th>Status</th><td>{{ lookup.status|status_label }}</td></tr>
+    <tr><th>{% ui 'Vergleich erstellt' 'Comparison created' %}</th><td>{{ lookup.created_at|ui_datetime }}</td></tr>
+    <tr><th>{% ui 'Angefordert von' 'Requested by' %}</th><td>{% if lookup.created_by %}{{ lookup.created_by.email|default:lookup.created_by.username }}{% else %}–{% endif %}</td></tr>
+    <tr><th>{% ui 'KI-Modell' 'AI model' %}</th><td>{{ lookup.model|default:"–" }}</td></tr>
+    <tr><th>{% ui 'Verglichene Analysen' 'Compared analyses' %}</th><td>{% for member in members %}<a href="#a{{ member.pk }}">#{{ member.pk }}</a> {{ member.query }} ({{ member.kind|kind_label }}, {{ member.created_at|ui_datetime }}){% if not forloop.last %}<br>{% endif %}{% empty %}–{% endfor %}</td></tr>
+  </table>
+
+  {% if lookup.report_md %}
+    <h2>{% ui 'KI-Vergleichsbericht' 'AI comparison report' %}</h2>
+    <div class="report">{{ lookup.report_md|localized_report|analysis_links:"pdf"|markdown }}</div>
+    <p class="note">{% ui 'Der Bericht wurde automatisch von einem Sprachmodell aus den Einzelanalysen erstellt und kann Fehler enthalten. Maßgeblich sind die Rohdaten der jeweiligen Analysen in diesem Dokument.' 'The report was generated automatically by a language model from the individual analyses and may contain errors. The raw data of each analysis in this document is authoritative.' %}</p>
+  {% endif %}
+
+  {% if places %}
+  <div class="geo">
+    <h2>{% ui 'Standorte im Vergleich' 'Locations compared' %}</h2>
+    {% if places.bild %}<img src="way-asset:map.png" alt="">{% else %}<p class="note">{% ui 'Kartenbild nicht verfügbar (OpenStreetMap-Kacheln konnten nicht geladen werden).' 'Map image unavailable (OpenStreetMap tiles could not be loaded).' %}</p>{% endif %}
+    <table>
+      <thead><tr><th></th><th>{% ui 'Analyse' 'Analysis' %}</th><th>{% ui 'Ort' 'Place' %}</th><th>{% ui 'Koordinaten' 'Coordinates' %}</th><th>{% ui 'Genauigkeit' 'Accuracy' %}</th><th>{% ui 'Quelle' 'Source' %}</th></tr></thead>
+      <tbody>{% for p in places.punkte %}
+        <tr><td><span class="geo-nr" style="background:{{ p.farbe }}">{{ p.nr }}</span></td><td><a href="#a{{ p.analyse }}">#{{ p.analyse }}</a> {{ p.abfrage }}</td><td>{{ p.ort|default:"–" }}</td>
+            <td><a href="{{ p.osm }}">{{ p.lat }}, {{ p.lon }}</a></td>
+            <td>± {{ p.genauigkeit_km|floatformat:0 }} km{% if p.geschaetzt %} ({% ui 'geschätzt' 'estimated' %}){% endif %}</td><td>{{ p.herkunft }}</td></tr>
+      {% endfor %}</tbody>
+    </table>
+    {% if places.abstaende %}
+    <table>
+      <thead><tr><th>{% ui 'Paar' 'Pair' %}</th><th>{% ui 'Abstand' 'Distance' %}</th><th></th></tr></thead>
+      <tbody>{% for pair in places.abstaende %}
+        <tr><td><span class="geo-nr" style="background:{{ pair.a.farbe }}">{{ pair.a.nr }}</span> ↔ <span class="geo-nr" style="background:{{ pair.b.farbe }}">{{ pair.b.nr }}</span></td>
+            <td>{{ pair.km }} km</td><td>{% if pair.ueberlappend %}{% ui 'Genauigkeitskreise überlappen' 'accuracy circles overlap' %}{% endif %}</td></tr>
+      {% endfor %}</tbody>
+    </table>
+    {% endif %}
+    <p class="note">{% ui 'Je Analyse die genaueste Standortangabe. IP-Standorte beschreiben den Netzbereich, nicht das Gerät.' 'The most precise location per analysis. IP locations describe the network range, not the device.' %} {% ui 'Kartenkacheln' 'Map tiles' %}: © OpenStreetMap contributors</p>
+  </div>
+  {% endif %}
+
+  {% for member in members %}
+  <div class="member" id="a{{ member.pk }}">
+    <h2>#{{ member.pk }} {{ member.query }}</h2>
+    <table>
+      <tr><th>{% ui 'Typ' 'Type' %}</th><td>{{ member.kind|kind_label }}</td></tr>
+      {% if member.as_of %}<tr><th>{% ui 'Stand (Rückblick)' 'Reference date' %}</th><td>{{ member.as_of|ui_date }}</td></tr>{% endif %}
+      <tr><th>{% ui 'Abfragestufe' 'Query mode' %}</th><td>{% if member.local_only %}{% ui 'nur lokal (keine Abfragen bei Drittanbietern)' 'local only (no third-party queries)' %}{% else %}{% ui 'passiv' 'passive' %}{% endif %}{% if member.active_probe %}, {% ui 'leicht aktiv' 'active-light' %}{% endif %}{% if member.port_scan %}, {% ui 'Portscan (eigenes System)' 'port scan (owned system)' %}{% endif %}</td></tr>
+      <tr><th>{% ui 'Analyse gestartet' 'Analysis started' %}</th><td>{{ member.created_at|ui_datetime }}</td></tr>
+      <tr><th>{% ui 'Abgeschlossen' 'Completed' %}</th><td>{{ member.finished_at|ui_datetime }}</td></tr>
+      {% if member.note %}<tr><th>{% ui 'Notiz' 'Note' %}</th><td>{{ member.note }}</td></tr>{% endif %}
+    </table>
+    {% if member.report_md %}
+      <h2>{% ui 'KI-Bericht' 'AI report' %}</h2>
+      <div class="report">{{ member.report_md|localized_report|markdown }}</div>
+    {% endif %}
+    {% with sources=member.sources|alphabetical_sources %}{% if sources %}
+      <h2>{% ui 'Rohdaten' 'Raw data' %}</h2>
+      {% for s in sources %}{% if s.ok %}{% if s.source != "FRITZ!Box Fingerprint" or s.data.classification.likelyFritzBox %}
+        <div class="source">
+          <h3>{{ s.source }}</h3>
+          <pre>{{ s.data|pretty_json }}</pre>
+        </div>
+      {% endif %}{% endif %}{% endfor %}
+    {% endif %}{% endwith %}
+  </div>
+  {% endfor %}
+</body>
+</html>

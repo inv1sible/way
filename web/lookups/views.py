@@ -18,12 +18,12 @@ from django.views.decorators.cache import cache_control, never_cache
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST
 
-from . import historie, ownership, pdf
+from . import geo, historie, ownership, pdf
 from .collectors import fritzbox
-from .detect import detect, extract, vcard_text
+from .detect import MAX_TARGETS, detect_many, extract, vcard_text
 from .models import Lookup, OwnedTarget
 from .templatetags.report_tags import fundstellen, geo_data, history_data, scan_data
-from .tasks import run_lookup
+from .tasks import run_compare, run_lookup
 
 
 def ui_text(german, english):
@@ -33,6 +33,14 @@ def ui_text(german, english):
 def _start(request, kind, query, active=False, active_ports=None, active_timeout=8, active_profile=None,
            enrichment_of=None, scan=False, as_of=None, note=None, email_public_web=False, phone_public_web=False,
            local_only=False):
+    lookup = _create(request, kind, query, active, active_ports, active_timeout, active_profile, enrichment_of, scan,
+                     as_of, note, email_public_web, phone_public_web, local_only)
+    return redirect("lookups:detail", pk=lookup.pk)
+
+
+def _create(request, kind, query, active=False, active_ports=None, active_timeout=8, active_profile=None,
+            enrichment_of=None, scan=False, as_of=None, note=None, email_public_web=False, phone_public_web=False,
+            local_only=False):
     # Direkter Kontakt zu fremden Zielen nur für Admins: Er geht von der Adresse dieses Servers aus.
     if note is None and request.user.is_authenticated:
         previous = Lookup.objects.filter(created_by=request.user, kind=kind, query=query).exclude(note="").first()
@@ -47,7 +55,7 @@ def _start(request, kind, query, active=False, active_ports=None, active_timeout
         local_only=bool(kind == "ip" and local_only and not active and not scan),
     )
     transaction.on_commit(lambda: run_lookup.delay(lookup.pk))
-    return redirect("lookups:detail", pk=lookup.pk)
+    return lookup
 
 
 def _visible(request):
@@ -88,13 +96,13 @@ def index(request):
         return _index(request, q=request.GET.get("q", ""))
     query = request.POST.get("q", "")
     try:
-        kind, value = detect(query)
-    except ValueError as exc:
-        return _index(request, q=query, error=str(exc))
-    try:
+        targets = detect_many(query)
         as_of = parse_as_of(request.POST.get("asof", ""))
     except ValueError as exc:
         return _index(request, q=query, error=str(exc))
+    if len(targets) > 1:
+        return _start_many(request, query, targets, as_of)
+    kind, value = targets[0]
     scan = request.POST.get("scan") == "on" and request.user.is_staff and kind in {"ip", "host"}
     active = request.POST.get("active") == "on" and request.user.is_staff and kind in {"ip", "host"}
     local_only = request.POST.get("local_only") == "on"
@@ -126,6 +134,53 @@ def index(request):
                   active_timeout=active_timeout, scan=scan, as_of=as_of,
                   email_public_web=request.POST.get("email_public_web") == "on",
                   phone_public_web=request.POST.get("phone_public_web") == "on", local_only=local_only)
+
+
+def _start_many(request, query, targets, as_of):
+    """Mehrere Ziele: je Ziel eine eigene, passive Analyse mit denselben Optionen."""
+    if request.POST.get("active") == "on" or request.POST.get("scan") == "on":
+        return _index(request, q=query, error=ui_text(
+            "Aktive Prüfungen und Portscans sind nur für ein einzelnes Ziel möglich.",
+            "Active checks and port scans are available for a single target only.",
+        ))
+    local_only = request.POST.get("local_only") == "on"
+    if local_only:
+        for kind, _value in targets:
+            if error := local_only_error(kind, False):
+                return _index(request, q=query, error=error)
+    with transaction.atomic():
+        for kind, value in targets:
+            _create(request, kind, value, as_of=as_of, local_only=local_only,
+                    email_public_web=request.POST.get("email_public_web") == "on",
+                    phone_public_web=request.POST.get("phone_public_web") == "on")
+    messages.info(request, ui_text(f"{len(targets)} Analysen gestartet.", f"{len(targets)} analyses started."))
+    return redirect("lookups:index")
+
+
+@require_POST
+def compare(request):
+    """Ausgewählte, abgeschlossene Analysen zu einer neuen Vergleichsanalyse zusammenfassen."""
+    # Ein Verlaufseintrag steht für alle Läufe derselben Abfrage ("36,31,30", neuester zuerst): verglichen wird der neueste.
+    ids = list(dict.fromkeys(int(value.split(",")[0]) for value in request.POST.getlist("ids")
+                             if value.split(",")[0].isdigit()))
+    members = list(_visible(request).filter(pk__in=ids, status=Lookup.Status.DONE).exclude(kind=Lookup.Kind.COMPARE))
+    if not 2 <= len(members) <= MAX_TARGETS:
+        messages.error(request, ui_text(
+            f"Bitte 2 bis {MAX_TARGETS} abgeschlossene Analysen auswählen (Vergleiche selbst zählen nicht).",
+            f"Select 2 to {MAX_TARGETS} completed analyses (comparisons themselves do not count).",
+        ))
+        return redirect("lookups:index")
+    return redirect("lookups:detail", pk=_create_comparison(request, members).pk)
+
+
+def _create_comparison(request, members):
+    members = sorted(members, key=lambda member: member.created_at)
+    title = ui_text("Vergleich", "Comparison")
+    lookup = Lookup.objects.create(kind=Lookup.Kind.COMPARE, created_by=request.user,
+                                   query=f"{title}: {', '.join(member.query for member in members)}"[:255])
+    lookup.compared.set(members)
+    transaction.on_commit(lambda: run_compare.delay(lookup.pk))
+    return lookup
 
 
 def local_only_error(kind, active):
@@ -185,6 +240,7 @@ def share(request):
 
 
 FRAGMENTS = ("meta", "progress", "error", "report", "geo", "scan", "history", "hits", "actions")
+COMPARE_FRAGMENTS = ("meta", "progress", "error", "report", "actions")
 
 
 def parse_as_of(text):
@@ -297,9 +353,10 @@ def _fragments(request, lookup):
     def part(html):
         return {"html": html, "h": hashlib.sha1(html.encode()).hexdigest()[:12]}
 
+    names = COMPARE_FRAGMENTS if lookup.kind == Lookup.Kind.COMPARE else FRAGMENTS
     return {
         "fragments": {name: part(render_to_string(f"lookups/live/{name}.html", context, request=request))
-                      for name in FRAGMENTS},
+                      for name in names},
         "sources": [
             {"key": source["source"], **part(render_to_string("lookups/live/source.html", {"s": source}))}
             for source in sorted(lookup.sources, key=lambda item: str(item.get("source", "")).casefold())
@@ -328,8 +385,28 @@ def _other_runs(request, lookup):
     return [run for run in reversed(runs) if run.pk != lookup.pk]
 
 
+def compare_members(lookup):
+    """Verglichene Analysen in der Reihenfolge ihres ursprünglichen Datums (gelöschte fehlen)."""
+    return list(lookup.compared.select_related("created_by").order_by("created_at"))
+
+
+def compare_places(members):
+    places = geo.comparison(members)
+    if places:
+        places["json"] = json.dumps(places["punkte"], ensure_ascii=False)
+    return places
+
+
 def detail(request, pk):
     lookup = get_object_or_404(_visible(request), pk=pk)
+    if lookup.kind == Lookup.Kind.COMPARE:
+        members = compare_members(lookup)
+        for member in members:
+            member.sorted_sources = sorted(member.sources, key=lambda item: str(item.get("source", "")).casefold())
+        return render(request, "lookups/compare.html", {
+            "lookup": lookup, "rev": _rev(lookup), "members": members, "places": compare_places(members),
+            **_fragments(request, lookup),
+        })
     return render(request, "lookups/detail.html", {
         "lookup": lookup, "rev": _rev(lookup), "runs": _other_runs(request, lookup),
         "owned_suggestion": _owned_target_suggestion(lookup),
@@ -419,6 +496,14 @@ def own_target(request, pk):
 @require_POST
 def rerun(request, pk):
     lookup = get_object_or_404(_visible(request), pk=pk)
+    if lookup.kind == Lookup.Kind.COMPARE:
+        # Neu vergleichen: dieselben, noch vorhandenen Analysen; neuere Läufe derselben Abfragen wählt man im Verlauf.
+        members = [member for member in compare_members(lookup) if member.status == Lookup.Status.DONE]
+        if len(members) < 2:
+            messages.error(request, ui_text("Es sind keine zwei verglichenen Analysen mehr vorhanden.",
+                                            "Fewer than two of the compared analyses still exist."))
+            return redirect("lookups:detail", pk=lookup.pk)
+        return redirect("lookups:detail", pk=_create_comparison(request, members).pk)
     # A rerun is passive unless the user explicitly selects an active option again.
     # Do not silently repeat direct network access from an earlier run.
     active = scan = local_only = False

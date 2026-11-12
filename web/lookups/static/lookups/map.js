@@ -10,18 +10,19 @@
       maxZoom: 18,
       attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
     }).addTo(map);
+    // Ausschnitt vorab aus den Koordinaten: circle.getBounds() setzt eine Karte mit Ausschnitt voraus.
     const bounds = L.latLngBounds([]);
+    points.forEach((p) => bounds.extend(L.latLng(p.lat, p.lon).toBounds(p.genauigkeit_km * 2000)));
+    map.fitBounds(bounds, { padding: [20, 20] });
     points.forEach((p) => {
-      const circle = L.circle([p.lat, p.lon], {
+      L.circle([p.lat, p.lon], {
         radius: p.genauigkeit_km * 1000, color: p.farbe, weight: 2, fillOpacity: 0.12,
       }).addTo(map);
-      bounds.extend(circle.getBounds());
       L.marker([p.lat, p.lon], {
         icon: L.divIcon({ className: "", html: `<span class="geo-nr" style="background:${p.farbe}">${p.nr}</span>`, iconSize: [22, 22] }),
         title: p.quelle,
       }).addTo(map).bindPopup(document.createTextNode(`${p.nr}: ${p.quelle} – ${p.ort || ""} (± ${Math.round(p.genauigkeit_km)} km)`));
     });
-    map.fitBounds(bounds, { padding: [20, 20] });
   };
   const scan = () => document.querySelectorAll(".geo-map").forEach(init);
   document.addEventListener("DOMContentLoaded", () => {

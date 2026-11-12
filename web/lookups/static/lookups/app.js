@@ -83,7 +83,7 @@ document.addEventListener("click", async (event) => {
   }
 });
 
-// Verlauf: Analysen zum Löschen oder Kopieren auswählen. Langer Druck auf eine Analyse (oder "Auswählen") startet die
+// Verlauf: Analysen zum Vergleichen, Kopieren oder Löschen auswählen. Langer Druck auf eine Analyse (oder "Auswählen") startet die
 // Auswahl, danach schaltet ein Tippen die Analyse um, statt sie zu öffnen.
 (() => {
   const form = document.getElementById("history");
@@ -96,6 +96,9 @@ document.addEventListener("click", async (event) => {
     form.querySelector("[data-pick-count]").textContent = ENGLISH ? `${count} selected` : `${count} ausgewählt`;
     form.querySelector("[data-pick-delete]").disabled = count === 0;
     form.querySelector("[data-pick-copy]").disabled = count === 0;
+    // Vergleiche selbst lassen sich nicht erneut vergleichen.
+    const comparable = boxes().filter((box) => box.checked && box.dataset.kind !== "compare").length;
+    form.querySelector("[data-pick-compare]").disabled = comparable < 2 || comparable > 10;
     boxes().forEach((box) => box.closest("tr").classList.toggle("picked", box.checked));
   }
   function start(row) {
@@ -120,7 +123,11 @@ document.addEventListener("click", async (event) => {
       return [link.textContent.trim(), cell(row, ".t-note").replace(/^\((.*)\)$/, "$1"), cell(row, ".t-kind"),
         cell(row, ".t-status"), time(row), link.href].join("\t");
     }));
-    flash(button, await copyText(lines.join("\n") + "\n"));
+    const ok = await copyText(lines.join("\n") + "\n");
+    // Rückmeldung am Symbol, weil auf dem Handy nur die Symbole zu sehen sind
+    button.classList.add(ok ? "flash-ok" : "flash-fail");
+    button.title = ok ? word(`${rows.length} kopiert`, `${rows.length} copied`) : word("Kopieren nicht möglich", "Copy failed");
+    setTimeout(() => { button.classList.remove("flash-ok", "flash-fail"); }, 1600);
   }
 
   let timer = null, origin = null, longPressed = false;
@@ -163,6 +170,7 @@ document.addEventListener("click", async (event) => {
   });
 
   form.addEventListener("submit", (event) => {
+    if (event.submitter?.hasAttribute("data-pick-compare")) return;  // Vergleichen ändert nichts am Bestand
     const chosen = boxes().filter((box) => box.checked);
     // Ein Eintrag kann mehrere Läufe derselben Abfrage umfassen (value "36,31,30")
     const runs = chosen.reduce((sum, box) => sum + box.value.split(",").length, 0);
@@ -172,6 +180,15 @@ document.addEventListener("click", async (event) => {
         `Delete ${chosen.length} entries containing ${runs} analyses in total (all runs)?`);
     if (!chosen.length || !confirm(question)) event.preventDefault();
   });
+
+  // Laufende Analysen (z. B. nach einer Mehrfacheingabe): Verlauf neu laden, bis alle fertig sind, aber nicht
+  // während einer Auswahl oder Eingabe.
+  if (form.querySelector(".t-status .spinner")) {
+    setInterval(() => {
+      const typing = document.activeElement?.matches("input, textarea, select") && document.activeElement.value;
+      if (!picking() && !typing && !document.hidden) window.location.reload();
+    }, 6000);
+  }
 })();
 
 // Suchformular: Optionen folgen der erkennbaren Eingabeart, nie dem Fokus allein. Ein @ zeigt die
@@ -179,34 +196,44 @@ document.addEventListener("click", async (event) => {
 (() => {
   const form = document.getElementById("analyze");
   if (!form) return;
-  const query = form.querySelector('input[name="q"]');
+  const query = form.querySelector('[name="q"]');
   const groups = [...form.querySelectorAll("[data-options]")];
-  const inputKind = () => {
-    const value = query.value.trim();
+  const isIp = (value) => value.includes(":") || /^(?:\d{1,3}\.){1,3}\d{0,3}$/.test(value);  // IPv6, IPv4 beim Tippen
+  const kindOf = (value) => {
     if (value.includes("@")) return "email";
-    if (value.includes(":")) return "network"; // IPv6
-    if (/^(?:\d{1,3}\.){1,3}\d{0,3}$/.test(value)) return "network"; // IPv4 while typing
+    if (isIp(value)) return "network";
     if (/[a-z]/i.test(value) && value.includes(".")) return "network"; // hostname
     return "none";
   };
+  // Mehrere Ziele: Optionen jeder vorkommenden Art zeigen; sie gelten nur für die passenden Ziele.
+  const entries = () => query.value.split(/[\n,;\s]+/).map((value) => value.trim()).filter(Boolean);
   const sync = () => {
-    const kind = inputKind();
+    const values = entries();
+    const kinds = new Set(values.map(kindOf));
     groups.forEach((group) => {
-      const visible = group.dataset.options === kind;
+      const visible = kinds.has(group.dataset.options);
       group.hidden = !visible;
       group.querySelectorAll("input").forEach((input) => { input.disabled = !visible; });
     });
     // "Nur lokal" gibt es nur für IP-Adressen; Hostnamen brauchen schon für die Auflösung externes DNS.
-    const value = query.value.trim();
-    const ip = kind === "network" && (value.includes(":") || /^(?:\d{1,3}\.){1,3}\d{0,3}$/.test(value));
+    const ip = values.some(isIp);
     form.querySelectorAll("[data-ip-only]").forEach((option) => {
       option.hidden = !ip;
       option.querySelectorAll("input").forEach((input) => { input.disabled = !ip; });
     });
-    form.classList.toggle("open", kind !== "none");
-    form.dataset.inputKind = kind;
+    form.classList.toggle("open", [...kinds].some((kind) => kind !== "none"));
+    form.dataset.inputKind = kinds.size === 1 ? [...kinds][0] : kinds.size ? "mixed" : "none";
   };
+  // Mehrzeiliges Feld: wächst mit dem Inhalt; Enter startet wie bisher, Umschalt+Enter fügt eine Zeile ein.
+  const grow = () => { query.style.height = "auto"; query.style.height = `${query.scrollHeight + 2}px`; };
+  query.addEventListener("keydown", (event) => {
+    if (event.key === "Enter" && !event.shiftKey && !event.isComposing) {
+      event.preventDefault();
+      form.requestSubmit();
+    }
+  });
   form.classList.add("collapsible");
   sync();
-  query.addEventListener("input", () => sync());
+  grow();
+  query.addEventListener("input", () => { sync(); grow(); });
 })();

@@ -14,6 +14,23 @@ def markdown(text):
     return mark_safe(_md.render(text or ""))
 
 
+ANALYSIS_REFERENCE = re.compile(r"\[\s*(#\d+(?:\s*,\s*#\d+)*)\s*\](?!\()")
+
+
+@register.filter
+def analysis_links(text, target="web"):
+    """Verweise im Vergleichsbericht ("[#120]", "[#120, #121]") als Links: im Web auf die Analyse, im PDF auf
+    ihren Abschnitt im selben Dokument."""
+    from django.urls import reverse
+
+    def links(match):
+        ids = re.findall(r"\d+", match.group(1))
+        return ", ".join(f"[#{pk}]({'#a' + pk if target == 'pdf' else reverse('lookups:detail', args=[pk])})"
+                         for pk in ids)
+
+    return ANALYSIS_REFERENCE.sub(links, text or "")
+
+
 @register.filter
 def report_parts(text):
     """Zweisprachigen KI-Bericht teilen; ältere einsprachige Berichte bleiben unverändert sichtbar."""
