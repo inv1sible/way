@@ -179,7 +179,7 @@ button.copy { padding: 4px 12px; font-size: .85rem; }
 button.small { padding: 4px 12px; font-size: .85rem; }
 button.danger { background: var(--high); }
 button:disabled { opacity: .5; cursor: default; }
-.history:not(.picking) [data-pick-count], .history:not(.picking) [data-pick-delete],
+.history:not(.picking) [data-pick-count], .history:not(.picking) [data-pick-delete], .history:not(.picking) [data-pick-copy],
 .history:not(.picking) [data-pick-cancel], .history.picking [data-pick-start] { display: none; }
 .pick-hint { margin: 0 0 8px; font-size: .85rem; }
 .history.picking .pick-hint { display: none; }

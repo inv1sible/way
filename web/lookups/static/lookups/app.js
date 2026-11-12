@@ -83,7 +83,7 @@ document.addEventListener("click", async (event) => {
   }
 });
 
-// Verlauf: Analysen zum Löschen auswählen. Langer Druck auf eine Analyse (oder "Auswählen") startet die
+// Verlauf: Analysen zum Löschen oder Kopieren auswählen. Langer Druck auf eine Analyse (oder "Auswählen") startet die
 // Auswahl, danach schaltet ein Tippen die Analyse um, statt sie zu öffnen.
 (() => {
   const form = document.getElementById("history");
@@ -95,6 +95,7 @@ document.addEventListener("click", async (event) => {
     const count = boxes().filter((box) => box.checked).length;
     form.querySelector("[data-pick-count]").textContent = ENGLISH ? `${count} selected` : `${count} ausgewählt`;
     form.querySelector("[data-pick-delete]").disabled = count === 0;
+    form.querySelector("[data-pick-copy]").disabled = count === 0;
     boxes().forEach((box) => box.closest("tr").classList.toggle("picked", box.checked));
   }
   function start(row) {
@@ -107,6 +108,19 @@ document.addEventListener("click", async (event) => {
     form.classList.remove("picking");
     boxes().forEach((box) => { box.checked = false; });
     refresh();
+  }
+
+  // Auswahl als tabulatorgetrennte Tabelle: lässt sich in Tabellenkalkulation oder Texteditor einfügen
+  const cell = (row, name) => (row.querySelector(name)?.textContent || "").replace(/\s+/g, " ").trim();
+  const time = (row) => cell(row, ".t-time").replace(cell(row, ".t-runs"), "").trim();  // ohne Laufzähler "2×"
+  async function copy(button) {
+    const rows = boxes().filter((box) => box.checked).map((box) => box.closest("tr"));
+    const lines = [word("Abfrage\tNotiz\tTyp\tStatus\tZeit\tLink", "Query\tNote\tType\tStatus\tTime\tLink")].concat(rows.map((row) => {
+      const link = row.querySelector(".t-query a");
+      return [link.textContent.trim(), cell(row, ".t-note").replace(/^\((.*)\)$/, "$1"), cell(row, ".t-kind"),
+        cell(row, ".t-status"), time(row), link.href].join("\t");
+    }));
+    flash(button, await copyText(lines.join("\n") + "\n"));
   }
 
   let timer = null, origin = null, longPressed = false;
@@ -135,6 +149,7 @@ document.addEventListener("click", async (event) => {
   form.addEventListener("click", (event) => {
     if (event.target.closest("[data-pick-start]")) { start(null); return; }
     if (event.target.closest("[data-pick-cancel]")) { stop(); return; }
+    if (event.target.closest("[data-pick-copy]")) { copy(event.target.closest("[data-pick-copy]")); return; }
     const row = event.target.closest("[data-pick-row]");
     if (!row) return;
     if (longPressed) { event.preventDefault(); longPressed = false; return; }  // Loslassen nach langem Druck
