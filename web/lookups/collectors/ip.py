@@ -132,7 +132,7 @@ async def rdap(client, ip):
 async def ip_api(client, ip):
     response = await client.get(
         f"http://ip-api.com/json/{ip}",
-        params={"fields": "status,message,country,regionName,city,isp,org,as,asname,mobile,proxy,hosting", "lang": "de"},
+        params={"fields": "status,message,country,regionName,city,lat,lon,isp,org,as,asname,mobile,proxy,hosting", "lang": "de"},
     )
     response.raise_for_status()
     data = response.json()

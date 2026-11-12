@@ -26,6 +26,7 @@ Generate random secret values with `python3 -c "import secrets; print(secrets.to
 | `TOOLS_TOKEN` | Required authentication token for the `tools` container |
 | `OLLAMA_URL`, `OLLAMA_MODEL` | Ollama endpoint and model; tested with `qwen3:8b` |
 | `GEOIP_DIR` | Folder of the local GeoIP databases; default `/data/geoip` (volume `geoip`) |
+| `MAXMIND_ACCOUNT_ID`, `MAXMIND_LICENSE_KEY` | Optional free MaxMind account; `update_geoip` then downloads GeoLite2 (with accuracy radius) instead of DB-IP Lite |
 | `DEFAULT_REGION` | Country used for phone numbers without a country code; default `DE` |
 | `TRUSTED_PROXIES` | Reverse proxies whose `X-Forwarded-For` value is trusted for login lockout |
 | `EMAIL_*`, `DEFAULT_FROM_EMAIL` | SMTP for invitations and password reset; without `EMAIL_HOST`, mail is written to logs |

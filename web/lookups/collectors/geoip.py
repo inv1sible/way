@@ -54,6 +54,8 @@ def lookup(ip):
             "region": _name(subdivisions[0].get("names")),
             "ort": _name((record.get("city") or {}).get("names")),
             "koordinaten": [location["latitude"], location["longitude"]] if "latitude" in location else None,
+            # Nur GeoLite2 meldet einen Radius; bei DB-IP schätzt die Karte ihn nach Detailstufe.
+            "genauigkeit_km": location.get("accuracy_radius"),
             "netz_geo": network if record else None,
         })
     if asn_path:

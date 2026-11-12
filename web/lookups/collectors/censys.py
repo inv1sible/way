@@ -63,6 +63,10 @@ def summarize(payload):
         "praefix": _get(resource, "autonomous_system", "bgp_prefix"),
         "land": _get(resource, "location", "country") or _get(resource, "location", "country_code"),
         "stadt": _get(resource, "location", "city"),
+        "region": _get(resource, "location", "province"),
+        "koordinaten": [_get(resource, "location", "coordinates", "latitude"),
+                        _get(resource, "location", "coordinates", "longitude")]
+        if _get(resource, "location", "coordinates", "latitude") is not None else None,
         "reverse_dns": _names(_get(resource, "dns", "reverse_dns", "names")),
         "labels": _names(resource.get("labels")),
         "anzahl_dienste": resource.get("service_count", len(resource.get("services") or [])),

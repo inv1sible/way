@@ -15,6 +15,8 @@ Analysis data stays on your server except for queries sent to the selected provi
   from VirusTotal, AbuseIPDB, CrowdSec, GreyNoise, AlienVault OTX, abuse.ch, and Spamhaus, plus bounded passive
   internet-scan data from Shodan, Censys, and optionally Netlas.
   TLS certificates, web headers, and port scans are optionally available for registered owned systems.
+  A **location map** (OpenStreetMap) shows every source's coordinates with an accuracy circle, reported by the
+  source or estimated from city, region, or country level; the PDF contains the map image with a legend.
   The **Local only** option analyzes an IP address without any external request: a local GeoIP database
   (DB-IP Lite, or MaxMind GeoLite2 if provided), your previous analyses, and the local language model.
 - **History:** repeated analyses of the same query are grouped and compared for changed addresses, ports,

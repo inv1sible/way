@@ -241,3 +241,10 @@ a.button.small { padding: 4px 12px; font-size: .85rem; }
 .enrich-fields label { display: grid; }
 .enrich-confirm { margin: 4px 0 10px; }
 .note-form { display: flex; gap: 8px; margin-top: 8px; }
+
+/* Standortkarte */
+.geo-map { height: 340px; border-radius: 8px; margin: 8px 0 12px; z-index: 0; }
+.geo-nr { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px;
+  border-radius: 50%; border: 2px solid #fff; color: #fff; font-weight: 700; font-size: 12px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, .4); box-sizing: border-box; }
+.geo-legend td:first-child { width: 28px; }

@@ -10,6 +10,13 @@ CACHE_SECONDS = 24 * 3600
 MAX_PORTS = 30
 
 
+def _coordinates(location):
+    if isinstance(location, dict):
+        lat, lon = location.get("lat"), location.get("lon", location.get("long"))
+        return [lat, lon] if lat is not None and lon is not None else None
+    return None
+
+
 def summarize(payload):
     data = payload.get("data", payload) if isinstance(payload, dict) else payload
     if isinstance(data, list):
@@ -25,6 +32,7 @@ def summarize(payload):
         "ip": data.get("ip"), "reverse_dns": (data.get("ptr") or [])[:10],
         "ports": ports[:MAX_PORTS],
         "land": geo.get("country"), "stadt": geo.get("city"),
+        "koordinaten": _coordinates(geo.get("location")),
         "privacy": {key: privacy[key] for key in ("vpn", "proxy", "tor") if key in privacy},
     }
     return {key: value for key, value in result.items() if value not in (None, "", [], {})} or {

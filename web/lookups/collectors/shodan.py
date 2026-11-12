@@ -25,6 +25,9 @@ def summarize(payload):
         "domains": (payload.get("domains") or [])[:20], "ports": (payload.get("ports") or [])[:50],
         "tags": (payload.get("tags") or [])[:20], "letzte_aktualisierung": payload.get("last_update"),
         "asn": payload.get("asn"), "isp": payload.get("isp"), "organisation": payload.get("org"),
+        "land": payload.get("country_name"), "region": payload.get("region_code"), "stadt": payload.get("city"),
+        "koordinaten": [payload["latitude"], payload["longitude"]]
+        if payload.get("latitude") is not None and payload.get("longitude") is not None else None,
         "dienste": services,
     }.items() if value not in (None, "", [])} or {"hinweis": "Antwort ohne verwertbare Felder"}
 

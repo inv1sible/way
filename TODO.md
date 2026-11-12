@@ -33,6 +33,9 @@ contact with third-party targets.
 
 ## User actions
 
+- [ ] Register a free MaxMind account (https://www.maxmind.com/en/geolite2/signup), create a license key, and set
+      `MAXMIND_ACCOUNT_ID` and `MAXMIND_LICENSE_KEY` in `.env`; then run `docker compose up -d`. WAY then uses
+      GeoLite2 with a reported accuracy radius instead of DB-IP Lite.
 - [ ] Add SMTP credentials to `.env` (`EMAIL_*`). Invitation and confirmation messages are not delivered until
       then.
 - [ ] Add an email address to the `admin` account so that password reset works.

@@ -35,6 +35,10 @@
   .hits li { margin-bottom: 2mm; }
   .hits .url { color: #2557d6; font-size: 8pt; word-break: break-all; }
   .hits .snippet { color: #5d6673; font-size: 8.5pt; }
+  .geo img { width: 100%; border: 0.5pt solid #d9dde3; margin-bottom: 2mm; }
+  .geo th { width: auto; }
+  .geo-nr { display: inline-block; width: 4.5mm; height: 4.5mm; line-height: 4.5mm; border-radius: 50%; color: #fff;
+            font-weight: bold; font-size: 7.5pt; text-align: center; }
   pre { font-family: "DejaVu Sans Mono", monospace; font-size: 7pt; white-space: pre-wrap; word-break: break-all;
         background: #f6f7f9; border: 0.5pt solid #e3e6ea; padding: 2mm; margin: 0; }
 </style>
@@ -66,6 +70,22 @@
       <li><strong>{{ observation.wert }}</strong>{% if observation.typ %} ({{ observation.typ }}){% endif %}{% if observation.zeit_von %} · {{ observation.zeit_von|ui_timestamp }}{% endif %}{% if observation.zeit_bis %} – {{ observation.zeit_bis|ui_timestamp }}{% endif %} [{{ observation.quelle }}]</li>
     {% endfor %}</ul>
   {% endif %}{% endwith %}
+
+  {% if geo %}
+  <div class="geo">
+    <h2>{% ui 'Standort' 'Location' %}</h2>
+    {% if geo.bild %}<img src="way-asset:map.png" alt="">{% else %}<p class="note">{% ui 'Kartenbild nicht verfügbar (OpenStreetMap-Kacheln konnten nicht geladen werden).' 'Map image unavailable (OpenStreetMap tiles could not be loaded).' %}</p>{% endif %}
+    <table>
+      <thead><tr><th></th><th>{% ui 'Quelle' 'Source' %}</th><th>{% ui 'Ort' 'Place' %}</th><th>{% ui 'Koordinaten' 'Coordinates' %}</th><th>{% ui 'Genauigkeit' 'Accuracy' %}</th></tr></thead>
+      <tbody>{% for p in geo.punkte %}
+        <tr><td><span class="geo-nr" style="background:{{ p.farbe }}">{{ p.nr }}</span></td><td>{{ p.quelle }}</td><td>{{ p.ort|default:"–" }}</td>
+            <td><a href="{{ p.osm }}">{{ p.lat }}, {{ p.lon }}</a></td>
+            <td>± {{ p.genauigkeit_km|floatformat:0 }} km ({% if p.geschaetzt %}{% ui 'geschätzt' 'estimated' %}: {% if p.stufe == 'stadt' %}{% ui 'Stadt' 'city' %}{% elif p.stufe == 'region' %}{% ui 'Region' 'region' %}{% else %}{% ui 'Land' 'country' %}{% endif %}{% else %}{% ui 'von der Quelle gemeldet' 'reported by the source' %}{% endif %})</td></tr>
+      {% endfor %}</tbody>
+    </table>
+    <p class="note">{% if geo.punkte|length > 1 %}{% ui 'Größter Abstand zwischen den Angaben' 'Largest distance between the entries' %}: {{ geo.max_abstand_km }} km · {% endif %}{% ui 'IP-Standorte beschreiben den Netzbereich, nicht das Gerät. Ohne gemeldeten Radius ist die Genauigkeit nach Detailstufe geschätzt.' 'IP locations describe the network range, not the device. Without a reported radius, accuracy is estimated from the level of detail.' %} {% ui 'Kartenkacheln' 'Map tiles' %}: © OpenStreetMap contributors</p>
+  </div>
+  {% endif %}
 
   {% include "lookups/live/scan.html" %}
   {% include "lookups/live/history.html" %}

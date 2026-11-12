@@ -12,7 +12,7 @@ from .collectors import bnetza, censys, email, fritzbox, geoip, history, host, i
 from .collectors import tools as tools_client
 from .detect import detect, extract
 from .models import Lookup, OwnedTarget
-from . import historie, ownership
+from . import geo, historie, ownership
 from .templatetags.report_tags import fundstellen, markdown, report_parts
 
 
@@ -2701,3 +2701,95 @@ class LocalOnlyTests(TestCase):
         with mock.patch("lookups.tasks.collect", fake_collect), mock.patch("lookups.tasks.llm.write_report", return_value=""):
             run_lookup(lookup.pk)
         self.assertTrue(seen["local_only"])
+
+
+def _png(color="#cccccc", size=(256, 256)):
+    import io
+    from PIL import Image
+    out = io.BytesIO()
+    Image.new("RGB", size, color).save(out, "PNG")
+    return out.getvalue()
+
+
+class GeoTests(SimpleTestCase):
+    SOURCES = [
+        {"source": "Lokale GeoIP-Datenbank", "ok": True,
+         "data": {"koordinaten": [50.11, 8.68], "ort": "Frankfurt", "land": "Deutschland", "genauigkeit_km": 20}},
+        {"source": "ip-api.com (Geo/ASN)", "ok": True,
+         "data": {"lat": 52.52, "lon": 13.40, "city": "Berlin", "country": "Deutschland"}},
+        {"source": "Shodan Host API (Internet-Scan-Daten)", "ok": True, "data": {"koordinaten": [51.0, 10.0], "land": "Germany"}},
+        {"source": "Netlas (Internet-Scan-Daten)", "ok": True, "data": {"koordinaten": [0, 0], "stadt": "Nowhere"}},
+        {"source": "Censys (Internet-Scan-Daten)", "ok": False, "error": "x"},
+    ]
+
+    def test_points_carry_source_and_reported_or_estimated_accuracy(self):
+        points = geo.locations(self.SOURCES)
+        self.assertEqual([p["quelle"] for p in points],
+                         ["Lokale GeoIP-Datenbank", "ip-api.com (Geo/ASN)", "Shodan Host API (Internet-Scan-Daten)"])
+        self.assertEqual((points[0]["genauigkeit_km"], points[0]["geschaetzt"]), (20, False))
+        self.assertEqual((points[1]["genauigkeit_km"], points[1]["geschaetzt"], points[1]["stufe"]), (25, True, "stadt"))
+        self.assertEqual((points[2]["genauigkeit_km"], points[2]["stufe"]), (500, "land"))
+        self.assertIn("mlat=52.52000", points[1]["osm"])
+
+    def test_summary_reports_the_largest_distance(self):
+        self.assertAlmostEqual(geo.summary(self.SOURCES)["max_abstand_km"], 424, delta=5)  # Frankfurt–Berlin
+        self.assertIsNone(geo.summary([{"source": "Reverse DNS", "ok": True, "data": {"ptr": "x"}}]))
+
+    def test_static_map_draws_over_osm_tiles(self):
+        from PIL import Image
+        import io
+        with mock.patch("lookups.geo._tile", return_value=_png()) as tile:
+            image = geo.static_map(geo.locations(self.SOURCES))
+        self.assertTrue(tile.called)
+        self.assertEqual(Image.open(io.BytesIO(image)).size, (900, 440))
+
+    def test_static_map_is_skipped_when_tiles_fail(self):
+        with mock.patch("lookups.geo._tile", side_effect=RuntimeError("offline")):
+            self.assertIsNone(geo.static_map(geo.locations(self.SOURCES)))
+
+    def test_collectors_expose_coordinates(self):
+        self.assertEqual(shodan.summarize({"ip_str": "203.0.113.5", "latitude": 50.1, "longitude": 8.6,
+                                           "city": "Frankfurt"})["koordinaten"], [50.1, 8.6])
+        self.assertEqual(netlas.summarize({"ip": "203.0.113.5", "geo": {"location": {"lat": 1.5, "long": 2.5}}})
+                         ["koordinaten"], [1.5, 2.5])
+        resource = {"result": {"resource": {"ip": "203.0.113.5", "autonomous_system": {"asn": 1},
+                                            "location": {"city": "X", "coordinates": {"latitude": 3.5, "longitude": 4.5}}}}}
+        self.assertEqual(censys.summarize(resource)["koordinaten"], [3.5, 4.5])
+
+    def test_prompt_contains_computed_locations_first(self):
+        prompt = llm.build_prompt("ip", "203.0.113.5", self.SOURCES)
+        data = prompt.split("Rohdaten je Quelle (JSON):\n", 1)[1]
+        self.assertTrue(data.startswith('[{"source":"Standortabschätzung (berechnet)"'))
+        self.assertIn('"max_abstand_km"', data)
+
+
+class GeoViewTests(TestCase):
+    def setUp(self):
+        self.user = get_user_model().objects.create_user("anna", password="x")
+        self.lookup = Lookup.objects.create(kind="ip", query="203.0.113.5", created_by=self.user, status=Lookup.Status.DONE,
+                                            report_md="# Deutsch\n## Kurzfazit\nx", sources=GeoTests.SOURCES)
+        self.client.force_login(self.user)
+
+    def test_detail_shows_map_and_legend(self):
+        page = self.client.get(reverse("lookups:detail", args=[self.lookup.pk]))
+        self.assertContains(page, 'class="geo-map"')
+        self.assertContains(page, "vendor/leaflet/leaflet.")
+        self.assertContains(page, "geschätzt")
+        self.assertContains(page, "von der Quelle gemeldet")
+
+    def test_pdf_embeds_map_image_and_legend(self):
+        from . import pdf
+        with mock.patch("lookups.geo._tile", return_value=_png()), \
+                mock.patch("lookups.pdf.HTML") as html:
+            pdf.render(self.lookup, None)
+        fetcher = html.call_args.kwargs["url_fetcher"]
+        self.assertIn('src="way-asset:map.png"', html.call_args.kwargs["string"])
+        self.assertTrue(fetcher.fetch("way-asset:map.png").url)
+        with self.assertRaises(ValueError):
+            fetcher.fetch("way-asset:other.png")
+
+    def test_pdf_renders_with_map(self):
+        with mock.patch("lookups.geo._tile", return_value=_png()):
+            response = self.client.get(reverse("lookups:pdf", args=[self.lookup.pk]))
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.content.startswith(b"%PDF"))

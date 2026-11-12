@@ -2,6 +2,11 @@
 {% load static ui_tags i18n %}{% get_current_language as LANGUAGE_CODE %}
 {% block title %}{{ lookup.query }} · Who Are You{% endblock %}
 {% block head %}
+  {% if lookup.kind == "ip" or lookup.kind == "host" %}
+    <link rel="stylesheet" href="{% static 'lookups/vendor/leaflet/leaflet.css' %}">
+    <script src="{% static 'lookups/vendor/leaflet/leaflet.js' %}" defer></script>
+    <script src="{% static 'lookups/map.js' %}" defer></script>
+  {% endif %}
   {% if lookup.is_running %}
     <script src="{% static 'lookups/live.js' %}" defer></script>
     <noscript><meta http-equiv="refresh" content="5"></noscript>
@@ -176,6 +181,7 @@
   <p class="muted" id="l-conn" hidden>{% ui 'Verbindung unterbrochen – neuer Versuch läuft …' 'Connection interrupted – retrying …' %}</p>
   <div id="l-error" data-h="{{ fragments.error.h }}">{{ fragments.error.html }}</div>
   <div id="l-report" data-h="{{ fragments.report.h }}">{{ fragments.report.html }}</div>
+  <div id="l-geo" data-h="{{ fragments.geo.h }}">{{ fragments.geo.html }}</div>
   <div id="l-scan" data-h="{{ fragments.scan.h }}">{{ fragments.scan.html }}</div>
   <div id="l-hits" data-h="{{ fragments.hits.h }}">{{ fragments.hits.html }}</div>
 

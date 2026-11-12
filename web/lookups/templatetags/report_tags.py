@@ -142,6 +142,16 @@ def scan_data(sources):
     return None
 
 
+def geo_data(sources):
+    """Standorte für Karte und Legende, samt JSON für die Webkarte; None ohne Koordinaten."""
+    from .. import geo
+
+    found = geo.summary(sources)
+    if found:
+        found["json"] = json.dumps(found["punkte"], ensure_ascii=False)
+    return found
+
+
 def history_data(sources):
     """Verlauf aus früheren eigenen Analysen, falls vorhanden."""
     for source in sources or []:

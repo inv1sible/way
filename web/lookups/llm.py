@@ -7,6 +7,7 @@ from datetime import date
 import httpx
 from django.conf import settings
 
+from . import geo
 from .templatetags.report_tags import fundstellen, returned_search_results
 
 MAX_DATA_CHARS = 15000
@@ -59,6 +60,9 @@ verraten Mail- und Hosting-Anbieter. "TLS-Zertifikat" und "Web-Kopfzeilen" nenne
 alternative Namen und Seitentitel.
 - "Frühere eigene Analysen" zeigen Veränderungen derselben Abfrage über die Zeit (z. B. wechselnde \
 Adressen eines dynamischen DNS-Namens). Nenne Änderungen seit der letzten Analyse ausdrücklich.
+- "Standortabschätzung (berechnet)" fasst die Koordinaten aller Quellen mit Genauigkeitsradius zusammen. Nenne den
+wahrscheinlichen Ort mit Radius und ob er gemeldet oder geschätzt ist; weichen die Quellen stark voneinander ab \
+(max_abstand_km), sag das ausdrücklich.
 - "Lokale GeoIP-Datenbank" nennt nur den ungefähren Standort und den Netzbetreiber (ASN) des Netzbereichs, \
 nie Anschlussinhaber oder Gerät; nenne Stadt und Region als ungefähr.
 - Historische DNS-Daten, passive Scanner und Router-Fingerprints dürfen nur direkt vorhandene Namen, Dienste,
@@ -97,6 +101,12 @@ def build_prompt(kind, query, sources, as_of=None):
         text = json.dumps(prompt_source, ensure_ascii=False, separators=(",", ":"), default=str)
         cap = SEARCH_SOURCE_CHARS if source["source"].startswith(("Websuche", "Spam-Portale")) else SOURCE_CHARS
         parts.append(text if len(text) <= cap else text[:cap] + "…(gekürzt)")
+    if locations := geo.summary(sources):
+        # Berechnet statt Rohdaten: steht vorn, damit das Prompt-Budget sie nie abschneidet.
+        points = [{key: point[key] for key in ("nr", "quelle", "ort", "lat", "lon", "genauigkeit_km", "geschaetzt")}
+                  for point in locations["punkte"]]
+        parts.insert(0, json.dumps({"source": "Standortabschätzung (berechnet)", "ok": True, "data": {
+            "punkte": points, "max_abstand_km": locations["max_abstand_km"]}}, ensure_ascii=False, separators=(",", ":")))
     data = "[" + ",\n".join(parts) + "]"
     if len(data) > MAX_DATA_CHARS:
         data = data[:MAX_DATA_CHARS] + "\n… (gekürzt)"

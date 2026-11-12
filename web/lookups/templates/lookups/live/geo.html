@@ -1,0 +1,20 @@
+{% load ui_tags %}{% if geo %}
+<section class="card result-card geo">
+  <h2>{% ui 'Standort' 'Location' %}</h2>
+  <div class="geo-map" data-points="{{ geo.json }}" role="img" aria-label="{% ui 'Karte der Standortangaben' 'Map of the location data' %}"></div>
+  <div class="table-wrap keep">
+  <table class="geo-legend">
+    <thead><tr><th></th><th>{% ui 'Quelle' 'Source' %}</th><th>{% ui 'Ort' 'Place' %}</th><th>{% ui 'Koordinaten' 'Coordinates' %}</th><th>{% ui 'Genauigkeit' 'Accuracy' %}</th></tr></thead>
+    <tbody>
+    {% for p in geo.punkte %}
+      <tr><td><span class="geo-nr" style="background:{{ p.farbe }}">{{ p.nr }}</span></td><td>{{ p.quelle }}</td><td>{{ p.ort|default:"–" }}</td>
+          <td><a href="{{ p.osm }}" target="_blank" rel="noopener noreferrer">{{ p.lat }}, {{ p.lon }}</a></td>
+          <td>± {{ p.genauigkeit_km|floatformat:0 }} km <span class="muted">({% if p.geschaetzt %}{% ui 'geschätzt' 'estimated' %}: {% if p.stufe == 'stadt' %}{% ui 'Stadt' 'city' %}{% elif p.stufe == 'region' %}{% ui 'Region' 'region' %}{% else %}{% ui 'Land' 'country' %}{% endif %}{% else %}{% ui 'von der Quelle gemeldet' 'reported by the source' %}{% endif %})</span></td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  <p class="muted">{% if geo.punkte|length > 1 %}{% ui 'Größter Abstand zwischen den Angaben' 'Largest distance between the entries' %}: {{ geo.max_abstand_km }} km · {% endif %}{% ui 'IP-Standorte beschreiben den Netzbereich, nicht das Gerät.' 'IP locations describe the network range, not the device.' %}
+    {% ui 'Kartenkacheln' 'Map tiles' %}: © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OpenStreetMap</a>{% if lookup.local_only %} · {% ui 'Die Kacheln lädt der Browser von OpenStreetMap; die Analyse selbst blieb lokal.' 'Your browser loads the tiles from OpenStreetMap; the analysis itself stayed local.' %}{% endif %}</p>
+</section>
+{% endif %}

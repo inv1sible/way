@@ -100,6 +100,11 @@ web metadata, and the selected router profile. Port scan can add Nmap for an aut
   for this distinction.
 - **IPinfo.io Lite** identifies the network's autonomous system, not the subscriber or device using an address.
   Its location is country-level and the provider is queried only when `IPINFO_TOKEN` is configured.
+- **Location map**: coordinates from the local GeoIP database, ip-api.com, Shodan, Censys, and Netlas appear as
+  numbered points with an accuracy circle. A radius reported by the source (GeoLite2 `accuracy_radius`) is used as
+  is; otherwise it is estimated: city 25 km, region 100 km, country 500 km. The map is computed from the raw data,
+  independent of the AI report; the report receives the same points as "Standortabschätzung (berechnet)". The PDF
+  map image is assembled on the server from OpenStreetMap tiles, which are cached for seven days.
 - **Local only** (IP addresses) runs only the address classification, the local GeoIP database, your previous
   analyses, and the report through `OLLAMA_URL`. It cannot be combined with active checks or port scans and is not
   offered for hostnames, which already need external DNS. `python manage.py update_geoip` downloads DB-IP Lite

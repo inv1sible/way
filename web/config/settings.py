@@ -197,6 +197,9 @@ OSINT_ABUSECH_KEY = env("ABUSECH_KEY")
 OSINT_CROWDSEC_KEY = env("CROWDSEC_KEY")
 OSINT_IPINFO_TOKEN = env("IPINFO_TOKEN")
 OSINT_GEOIP_DIR = env("GEOIP_DIR", "/data/geoip")
+# Kostenloser MaxMind-Account: GeoLite2 statt DB-IP Lite, mit Genauigkeitsradius je Adresse
+OSINT_MAXMIND_ACCOUNT_ID = env("MAXMIND_ACCOUNT_ID")
+OSINT_MAXMIND_LICENSE_KEY = env("MAXMIND_LICENSE_KEY")
 OSINT_CENSYS_TOKEN = env("CENSYS_TOKEN")
 OSINT_CENSYS_ORG_ID = env("CENSYS_ORG_ID")
 # Gratis-Tarif: 100 Credits im Monat; der Verbrauch je Abfrage ist nicht dokumentiert, daher vorsichtig

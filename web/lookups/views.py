@@ -22,7 +22,7 @@ from . import historie, ownership, pdf
 from .collectors import fritzbox
 from .detect import detect, extract, vcard_text
 from .models import Lookup, OwnedTarget
-from .templatetags.report_tags import fundstellen, history_data, scan_data
+from .templatetags.report_tags import fundstellen, geo_data, history_data, scan_data
 from .tasks import run_lookup
 
 
@@ -184,7 +184,7 @@ def share(request):
     return _index(request, q=candidate or "", error=error, shared=shared[:500])
 
 
-FRAGMENTS = ("meta", "progress", "error", "report", "scan", "history", "hits", "actions")
+FRAGMENTS = ("meta", "progress", "error", "report", "geo", "scan", "history", "hits", "actions")
 
 
 def parse_as_of(text):
@@ -292,7 +292,7 @@ def _fragments(request, lookup):
     Vorlagen; der Browser ersetzt nur Teile, deren Hash sich geändert hat."""
     context = {"lookup": lookup, "hits": fundstellen(lookup.sources), "count": len(lookup.sources),
                "scan": scan_data(lookup.sources), "history": history_data(lookup.sources),
-               **_enrichment_context(request, lookup)}
+               "geo": geo_data(lookup.sources), **_enrichment_context(request, lookup)}
 
     def part(html):
         return {"html": html, "h": hashlib.sha1(html.encode()).hexdigest()[:12]}
