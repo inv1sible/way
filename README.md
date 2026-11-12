@@ -14,7 +14,7 @@ Analysis data stays on your server except for queries sent to the selected provi
 - **IP addresses and hostnames:** network owner, location, and ASN context from IPinfo.io, DNS, reputation data
   from VirusTotal, AbuseIPDB, CrowdSec, GreyNoise, AlienVault OTX, abuse.ch, and Spamhaus, plus bounded passive
   internet-scan data from Shodan, Censys, and optionally Netlas.
-  TLS certificates, web headers, and port scans are optionally available for registered owned systems.
+  TLS certificates, web headers, and port scans are optionally available to administrators with confirmed authorization.
   A **location map** (OpenStreetMap) shows every source's coordinates with an accuracy circle, reported by the
   source or estimated from city, region, or country level; the PDF contains the map image with a legend.
   The **Local only** option analyzes an IP address without sending it to any third party or to the address
@@ -58,9 +58,9 @@ The web interface is available at `http://<host>:${APP_PORT}`. The account confi
 | [docs/quellen.md](docs/quellen.md) | Data sources, required API keys, and registration links |
 | [docs/betrieb.md](docs/betrieb.md) | Installation, `.env` configuration, reverse proxy, Ollama, updates, and backups |
 | [docs/architektur.md](docs/architektur.md) | Services, analysis flow, data model, and live updates |
-| [docs/sicherheit.md](docs/sicherheit.md) | Request levels, the `tools` container, owned systems, accounts, and operational security |
+| [docs/sicherheit.md](docs/sicherheit.md) | Request levels, the `tools` container, authorization, accounts, and operational security |
 | [docs/fritzbox-fingerprint.md](docs/fritzbox-fingerprint.md) | Defensive FRITZ!Box detection, authorization, target binding, and limitations |
-| [docs/router-fingerprint.md](docs/router-fingerprint.md) | Ownership-bound, profiled active router enrichment |
+| [docs/router-fingerprint.md](docs/router-fingerprint.md) | Authorized, profiled active router enrichment |
 | [TODO.md](TODO.md) | Open work and plans |
 
 ## Tests
@@ -74,5 +74,5 @@ docker compose run --rm --no-deps -e TOOLS_TOKEN=x tools python -m unittest -v
 
 WAY supports public-source research into email addresses, phone numbers, IP addresses, and hostnames.
 Active requests such as TLS, web metadata, and port scans against third-party systems may be unlawful in some
-jurisdictions. Port scanning is therefore restricted to registered owned systems. The terms of service of every
+jurisdictions. Active checks and port scanning are therefore restricted to administrators who confirm their authorization for each run. The terms of service of every
 data provider continue to apply.

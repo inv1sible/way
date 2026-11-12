@@ -1,6 +1,5 @@
 import hashlib
 import json
-import re
 from datetime import date
 
 from django.contrib import messages
@@ -18,10 +17,10 @@ from django.views.decorators.cache import cache_control, never_cache
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST
 
-from . import geo, historie, ownership, pdf
+from . import geo, historie, pdf
 from .collectors import fritzbox
 from .detect import MAX_TARGETS, detect_many, extract, vcard_text
-from .models import Lookup, OwnedTarget
+from .models import Lookup
 from .templatetags.report_tags import fundstellen, geo_data, history_data, scan_data
 from .tasks import run_compare, run_lookup
 
@@ -108,18 +107,8 @@ def index(request):
     local_only = request.POST.get("local_only") == "on"
     if local_only and (error := local_only_error(kind, active or scan)):
         return _index(request, q=query, error=error)
-    if scan and not ownership.is_owned(kind, value):
-        return _index(request, q=query, error=ui_text(
-            f"„{value}“ ist nicht als eigenes System eingetragen. Der Portscan ist nur für eigene Systeme erlaubt.",
-            f"“{value}” is not registered as an owned system. Port scans are allowed only for owned systems.",
-        ))
     active_ports, active_timeout = fritzbox.DEFAULT_PORTS, fritzbox.DEFAULT_TIMEOUT
     if active:
-        if not ownership.is_owned(kind, value):
-            return _index(request, q=query, error=ui_text(
-                "Aktive Prüfungen sind nur für als eigene Systeme eingetragene Ziele erlaubt.",
-                "Active checks are allowed only for targets registered as owned systems.",
-            ))
         if kind == "ip" and not fritzbox.public_address(value):
             return _index(request, q=query, error=ui_text(
                 "Die leichte aktive Prüfung ist nur für öffentlich routbare Ziele erlaubt.",
@@ -270,77 +259,10 @@ def _rev(lookup):
 
 
 def _enrichment_context(request, lookup):
-    """Steuert die Folgeprüfung und erklärt Admins fehlende Voraussetzungen sichtbar.
-
-    Aktive Verbindungen verlassen diesen Server. Deshalb genügt ein Staff-Account nicht: Das
-    konkrete Ziel muss vorher als eigenes System hinterlegt sein. Bei Hostnamen braucht die
-    spätere DNS/ASN-Bindung zusätzlich mindestens ein erlaubtes Origin-ASN.
-    """
-    eligible_kind = lookup.kind in {"ip", "host"}
-    owned = eligible_kind and ownership.is_owned(lookup.kind, lookup.query)
-    host_needs_asn = lookup.kind == "host" and owned and not ownership.allowed_asns(lookup.kind, lookup.query)
-    allowed = request.user.is_staff and not lookup.is_running and owned and not host_needs_asn
-    return {
-        "enrichment_allowed": allowed,
-        "enrichment_setup_required": request.user.is_staff and not lookup.is_running and eligible_kind and not allowed,
-        "enrichment_requires_asn": host_needs_asn,
-        "owned_target_setup_available": request.user.is_staff and not lookup.is_running and eligible_kind,
-    }
-
-
-def _owned_target_suggestion(lookup):
-    """Vorbelegung aus dem vorhandenen Analyse-Snapshot, ohne neue externe Anfrage.
-
-    ASN ist die maschinenlesbare Schranke für aktive Hostname-Prüfungen. Provider-Namen bleiben
-    Kontext für Menschen: Sie sind nicht stabil genug, um daraus eine Sicherheitsentscheidung zu
-    treffen. Die Nutzerin bzw. der Nutzer bestätigt beide Werte vor dem Speichern.
-    """
-    if lookup.kind not in {"ip", "host"}:
-        return None
-    addresses, asns, providers, evidence, reverse_dns = [], set(), [], [], ""
-    for source in lookup.sources or []:
-        name, data = source.get("source", ""), source.get("data") or {}
-        if not source.get("ok") or not isinstance(data, dict):
-            continue
-        if name == "DNS-Auflösung":
-            addresses.extend(str(value) for value in data.get("adressen", []) if value)
-            evidence.append(name)
-        if name == "Reverse DNS":
-            reverse_dns = str(data.get("ptr") or "").strip().lower().rstrip(".")
-            evidence.append(name)
-        if name.startswith("ASN und Netzbetreiber"):
-            asns.update(str(value) for value in data.get("asn", []) if value)
-            evidence.append(name)
-        if name.startswith("ip-api.com"):
-            asns.update(re.findall(r"\bAS\d+\b", str(data.get("as") or ""), flags=re.IGNORECASE))
-            providers.extend(str(data.get(key)).strip() for key in ("isp", "org", "asname") if data.get(key))
-            evidence.append(name)
-        if name.startswith("IPinfo.io"):
-            asns.update(re.findall(r"\bAS\d+\b", str(data.get("asn") or ""), flags=re.IGNORECASE))
-            if data.get("as_name"):
-                providers.append(str(data["as_name"]).strip())
-            evidence.append(name)
-        if name.startswith("RDAP") and data.get("netzname"):
-            providers.append(str(data["netzname"]).strip())
-            evidence.append(name)
-        if name == "Dynamische Zielbindung (DNS/ASN)":
-            for resolved in data.get("resolvedAddresses", []):
-                if isinstance(resolved, dict):
-                    addresses.append(str(resolved.get("address") or ""))
-                    asns.update(str(value) for value in resolved.get("originAsns", []) if value)
-            evidence.append(name)
-    try:
-        normal_asns = sorted(ownership.parse_asns(",".join(asns)))
-    except Exception:
-        normal_asns = []
-    return {
-        "value": lookup.query,
-        "addresses": sorted({address for address in addresses if address}),
-        "asn": ", ".join(normal_asns),
-        "provider": " · ".join(dict.fromkeys(value for value in providers if value))[:200],
-        "dns_name": reverse_dns,
-        "evidence": ", ".join(dict.fromkeys(evidence)),
-    }
+    """Aktive Folgeprüfungen stehen Admins für IP-Adressen und Hostnamen offen; die Berechtigung
+    (eigenes System, Auftrag oder Beschluss) bestätigt die Person bei jedem Lauf."""
+    allowed = request.user.is_staff and not lookup.is_running and lookup.kind in {"ip", "host"}
+    return {"enrichment_allowed": allowed}
 
 
 def _fragments(request, lookup):
@@ -410,7 +332,6 @@ def detail(request, pk):
         })
     return render(request, "lookups/detail.html", {
         "lookup": lookup, "rev": _rev(lookup), "runs": _other_runs(request, lookup),
-        "owned_suggestion": _owned_target_suggestion(lookup),
         **_enrichment_context(request, lookup),
         **_fragments(request, lookup),
     })
@@ -454,48 +375,6 @@ def note(request, pk):
 
 
 @require_POST
-def own_target(request, pk):
-    """Speichert das feste, aus der Detailansicht stammende Ziel als eigenes System.
-
-    Der Client darf Provider und ASNs korrigieren, aber weder IP noch Hostname ersetzen. So wird
-    aus einem Detaildialog kein Weg, beliebige Ziele als eigene Systeme zu hinterlegen.
-    """
-    lookup = get_object_or_404(_visible(request), pk=pk)
-    if not request.user.is_staff:
-        raise PermissionDenied
-    if lookup.kind not in {"ip", "host"}:
-        raise PermissionDenied
-    if request.POST.get("ownership_confirmation") != "confirmed":
-        messages.error(request, ui_text(
-            "Bitte bestätige, dass dieses System dir gehört oder du es ausdrücklich verwalten darfst.",
-            "Confirm that you own this system or are explicitly authorized to administer it.",
-        ))
-        return redirect("lookups:detail", pk=lookup.pk)
-    try:
-        _kind, value = ownership.parse(lookup.query)
-        asn = ", ".join(sorted(ownership.parse_asns(request.POST.get("asn", ""))))
-        provider = " ".join(request.POST.get("provider", "").split())[:200]
-        dns_name = request.POST.get("dns_name", "") if lookup.kind == "ip" else ""
-        target, created = OwnedTarget.objects.get_or_create(
-            value=value,
-            defaults={"asn": asn, "provider": provider, "dns_name": dns_name,
-                      "note": f"Aus Analyse {lookup.pk} übernommen."},
-        )
-        if not created:
-            target.asn, target.provider, target.dns_name = asn, provider, dns_name
-            target.save(update_fields=["asn", "provider", "dns_name"])
-    except Exception as exc:
-        messages.error(request, ui_text(f"Eigenes System wurde nicht gespeichert: {exc}",
-                                        f"Owned system was not saved: {exc}"))
-        return redirect("lookups:detail", pk=lookup.pk)
-    messages.success(request, ui_text(
-        f"„{target.value}“ ist als eigenes System gespeichert.",
-        f"“{target.value}” is saved as an owned system.",
-    ))
-    return redirect("lookups:detail", pk=lookup.pk)
-
-
-@require_POST
 def rerun(request, pk):
     lookup = get_object_or_404(_visible(request), pk=pk)
     if lookup.kind == Lookup.Kind.COMPARE:
@@ -529,18 +408,8 @@ def rerun(request, pk):
                     "Confirm authorization again for every active check.",
                 ))
                 return redirect("lookups:detail", pk=lookup.pk)
-            if not request.user.is_staff or not ownership.is_owned(lookup.kind, lookup.query):
-                messages.error(request, ui_text(
-                    "Aktive Prüfungen und Portscans sind nur für als eigene Systeme eingetragene Ziele erlaubt.",
-                    "Active checks and port scans are allowed only for targets registered as owned systems.",
-                ))
-                return redirect("lookups:detail", pk=lookup.pk)
-            if lookup.kind == "host" and not ownership.allowed_asns(lookup.kind, lookup.query):
-                messages.error(request, ui_text(
-                    "Für aktive Hostnamen müssen erlaubte Origin-ASNs beim eigenen System hinterlegt sein.",
-                    "Active hostname checks require allowed origin ASNs on the owned system.",
-                ))
-                return redirect("lookups:detail", pk=lookup.pk)
+            if not request.user.is_staff:
+                raise PermissionDenied
         if active:
             if lookup.kind == "ip" and not fritzbox.public_address(lookup.query):
                 messages.error(request, ui_text(
@@ -583,10 +452,10 @@ def enrich(request, pk):
         raise PermissionDenied
     if lookup.is_running:
         return redirect("lookups:detail", pk=lookup.pk)
-    if lookup.kind == "phone" or not ownership.is_owned(lookup.kind, lookup.query):
+    if lookup.kind not in {"ip", "host"}:
         messages.error(request, ui_text(
-            "Aktive Anreicherung ist nur für als eigene Systeme eingetragene IP-Adressen oder Hostnamen erlaubt.",
-            "Active enrichment is allowed only for IP addresses or hostnames registered as owned systems.",
+            "Aktive Anreicherung ist nur für IP-Adressen und Hostnamen möglich.",
+            "Active enrichment is available only for IP addresses and hostnames.",
         ))
         return redirect("lookups:detail", pk=lookup.pk)
     if request.POST.get("authorization") != "confirmed":

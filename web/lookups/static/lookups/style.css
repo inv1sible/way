@@ -211,8 +211,6 @@ button:disabled { opacity: .5; cursor: default; }
 
 /* Notiz zu einer Analyse */
 .note { margin: 0 0 8px; font-style: italic; }
-.enrichment-hint { margin: 0 0 12px; }
-.icon.setup { color: var(--muted); }
 .link-button { appearance: none; border: 0; padding: 0; background: transparent; color: var(--accent); font: inherit; cursor: pointer; text-decoration: underline; }
 .note-tip { margin: 4px 0 0; font-size: .85rem; }
 .t-note { color: var(--muted); font-weight: 400; white-space: normal; word-break: normal; overflow-wrap: anywhere; }
@@ -247,8 +245,6 @@ a.button.small { padding: 4px 12px; font-size: .85rem; }
   background: var(--surface); color: var(--text); }
 .note-pop::backdrop { background: rgb(0 0 0 / .35); }
 .enrich-pop { width: min(38rem, calc(100vw - 32px)); }
-.owned-pop { width: min(38rem, calc(100vw - 32px)); }
-.owned-pop input { margin: 4px 0 10px; }
 .enrich-pop select, .enrich-pop input { margin: 4px 0 10px; }
 .enrich-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .enrich-fields label { display: grid; }

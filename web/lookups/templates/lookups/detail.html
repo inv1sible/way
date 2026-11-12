@@ -59,10 +59,8 @@
     <label class="check"><input type="checkbox" name="scan" value="on">
       <span>{% ui 'Begrenzten Portscan ausführen' 'Run bounded port scan' %}</span></label>
     <label class="check enrich-confirm"><input type="checkbox" name="authorization" value="confirmed">
-      <span>{% ui 'Ich bestätige die Berechtigung für jede ausgewählte aktive Prüfung.' 'I confirm authorization for every selected active check.' %}</span></label>
+      <span>{% ui 'Ich bin für die aktive Prüfung berechtigt (eigenes System, Auftrag oder Beschluss).' 'I am authorized for the active check (own system, assignment or court order).' %}</span></label>
     <p class="muted note-tip">{% ui 'Aktive Prüfungen sind sequenziell, begrenzt und ohne Redirects, Anmeldung, Zugangsdaten, Brute Force, Exploits oder Schwachstellenproben.' 'Active checks are sequential and bounded, with no redirects, sign-in, credentials, brute force, exploits, or vulnerability probes.' %}</p>
-    {% elif user.is_staff %}
-    <p class="muted note-tip">{% ui 'Aktive Optionen sind erst verfügbar, wenn dieses Ziel als eigenes System eingerichtet ist und bei Hostnamen erlaubte Origin-ASNs hinterlegt sind.' 'Active options become available after this target is set up as owned and, for hostnames, allowed origin ASNs are recorded.' %}</p>
     {% else %}
     <p class="muted note-tip">{% ui 'Für dieses Konto stehen nur passive Quellen zur Verfügung.' 'Only passive sources are available for this account.' %}</p>
     {% endif %}
@@ -76,16 +74,6 @@
   </form>
 </div>
 {% endif %}
-{% if enrichment_setup_required %}
-<p class="muted enrichment-hint">
-  {% if enrichment_requires_asn %}
-    {% ui 'Aktive Anreicherung ist für diesen Hostnamen erst verfügbar, wenn unter Eigene Systeme erlaubte Origin-ASNs hinterlegt sind.' 'Active enrichment for this hostname is available after allowed origin ASNs have been added under Owned systems.' %}
-  {% else %}
-    {% ui 'Aktive Anreicherung ist für als eigene Systeme registrierte IP-Adressen und Hostnamen verfügbar.' 'Active enrichment is available for IP addresses and hostnames registered as owned systems.' %}
-  {% endif %}
-  <button type="button" class="link-button" popovertarget="owned-pop">{% ui 'Dieses System einrichten' 'Set up this system' %}</button>
-</p>
-{% endif %}
 <div id="note-pop" popover class="note-pop">
   <form method="post" action="{% url 'lookups:note' lookup.pk %}">{% csrf_token %}
     <label for="note-field"><strong>{% ui 'Notiz' 'Note' %}</strong></label>
@@ -96,38 +84,11 @@
     {% if lookup.note %}<p class="muted note-tip">{% ui 'Feld leeren und speichern entfernt die Notiz.' 'Clear the field and save to remove the note.' %}</p>{% endif %}
   </form>
 </div>
-{% if user.is_staff and owned_suggestion %}
-<div id="owned-pop" popover class="note-pop owned-pop">
-  <form method="post" action="{% url 'lookups:own_target' lookup.pk %}">{% csrf_token %}
-    <label for="owned-value"><strong>{% ui 'Eigenes System einrichten' 'Set up owned system' %}</strong></label>
-    <p class="muted note-tip">{% ui 'Die Vorbelegung stammt ausschließlich aus den Rohdaten dieser Analyse; beim Öffnen wird keine neue Netzabfrage gestartet. Bitte prüfe die Angaben vor dem Speichern.' 'The suggestions use only this analysis’s raw data; opening this dialog does not start a new network lookup. Review the values before saving.' %}</p>
-    <label for="owned-value">{% ui 'Ziel' 'Target' %}
-      <input id="owned-value" value="{{ owned_suggestion.value }}" readonly></label>
-    {% if owned_suggestion.addresses %}
-      <p class="muted note-tip">{% ui 'Aktuelle DNS-Auflösung' 'Current DNS resolution' %}: {{ owned_suggestion.addresses|join:", " }}</p>
-    {% endif %}
-    {% if lookup.kind == "ip" %}
-    <label for="owned-dns-name">{% ui 'DNS-Name zur IP-Bindung' 'DNS name for IP binding' %}
-      <input id="owned-dns-name" name="dns_name" value="{{ owned_suggestion.dns_name }}" maxlength="255" placeholder="router.example.org"></label>
-    <p class="muted note-tip">{% ui 'Vorbelegt ist der Reverse-DNS-Name, falls vorhanden. Für aktive Prüfungen muss dieser Name weiterhin auf diese IP auflösen; er ist kein Eigentumsnachweis.' 'The reverse-DNS name is prefilled when available. For active checks, this name must still resolve to this IP; it is not proof of ownership.' %}</p>
-    {% endif %}
-    <label for="owned-provider">{% ui 'Provider / Netzbetreiber' 'Provider / network operator' %}
-      <input id="owned-provider" name="provider" value="{{ owned_suggestion.provider }}" maxlength="200" autocomplete="organization"></label>
-    <label for="owned-asn">{% ui 'Erlaubte Origin-ASNs' 'Allowed origin ASNs' %}
-      <input id="owned-asn" name="asn" value="{{ owned_suggestion.asn }}" maxlength="100" placeholder="AS3320, AS3209" {% if lookup.kind == "host" %}required{% endif %}></label>
-    <p class="muted note-tip">{% if lookup.kind == "host" %}{% ui 'Bei aktiven Hostnamen muss jede aktuell aufgelöste Adresse zu mindestens einem dieser ASNs gehören. Der Providername ist nur Kontext; technisch geprüft werden die ASNs.' 'For active hostnames, every currently resolved address must belong to at least one of these ASNs. The provider name is context only; the ASNs are checked technically.' %}{% else %}{% ui 'Bei aktiver Anreicherung wird geprüft, ob diese IP weiterhin zu mindestens einem dieser ASNs gehört. Der Providername ist nur Kontext.' 'During active enrichment, WAY checks whether this IP still belongs to at least one of these ASNs. The provider name is context only.' %}{% endif %}</p>
-    {% if owned_suggestion.evidence %}<p class="muted note-tip">{% ui 'Vorbelegt aus' 'Prefilled from' %}: {{ owned_suggestion.evidence }}</p>{% endif %}
-    <label class="check enrich-confirm"><input type="checkbox" name="ownership_confirmation" value="confirmed" required>
-      <span>{% ui 'Ich bestätige, dass dieses Ziel mir gehört oder ich es ausdrücklich verwalten darf.' 'I confirm that I own this target or am explicitly authorized to administer it.' %}</span></label>
-    <button class="small">{% ui 'Als eigenes System speichern' 'Save as owned system' %}</button>
-  </form>
-</div>
-{% endif %}
 {% if enrichment_allowed %}
 <div id="enrich-pop" popover class="note-pop enrich-pop">
   <form method="post" action="{% url 'lookups:enrich' lookup.pk %}">{% csrf_token %}
     <label for="enrich-profile"><strong>{% ui 'Aktive Anreicherung' 'Active enrichment' %}</strong></label>
-    <p class="muted note-tip">{% ui 'Nur für dieses als eigenes System eingetragene Ziel. Der neue Lauf bleibt vom passiven Ursprungslauf getrennt.' 'Only for this target registered as owned. The new run remains separate from the passive source run.' %}</p>
+    <p class="muted note-tip">{% ui 'Der neue Lauf bleibt vom passiven Ursprungslauf getrennt.' 'The new run remains separate from the passive source run.' %}</p>
     <label for="enrich-profile">{% ui 'Prüfprofil' 'Probe profile' %}</label>
     <select id="enrich-profile" name="profile">
       <option value="generic-router">{% ui 'Generischer Router – TLS, Header und Titel auf /' 'Generic router – TLS, headers and title at /' %}</option>
@@ -141,7 +102,7 @@
         <input name="active_timeout" type="number" min="2" max="20" placeholder="8"></label>
     </div>
     <label class="check enrich-confirm"><input type="checkbox" name="authorization" value="confirmed" required>
-      <span>{% ui 'Ich bestätige, dass ich dieses Ziel besitze oder ausdrücklich prüfen darf.' 'I confirm that I own this target or have explicit authorization to test it.' %}</span></label>
+      <span>{% ui 'Ich bin für die aktive Prüfung berechtigt (eigenes System, Auftrag oder Beschluss).' 'I am authorized for the active check (own system, assignment or court order).' %}</span></label>
     <p class="muted note-tip">{% ui 'Das Speedport-Profil nutzt nur den unauthentifizierten Statuspfad; keine Challenge-Response- oder TR-064-Anfragen. Alle Profile sind sequenziell, maximal vier Ports, ohne Redirects, Anmeldung, Zugangsdaten, Brute Force, Exploits oder Schwachstellenproben.' 'The Speedport profile uses only the unauthenticated status path; no challenge-response or TR-064 requests. All profiles are sequential, at most four ports, with no redirects, sign-in, credentials, brute force, exploits, or vulnerability probes.' %}</p>
     <button class="small">{% ui 'Anreicherung starten' 'Start enrichment' %}</button>
   </form>

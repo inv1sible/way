@@ -10,8 +10,8 @@ Enter an IP address or hostname in the search field. The default **passive** mod
 evaluates reverse DNS and already configured Shodan InternetDB and Censys results for explicit AVM or FRITZ!
 markers. Censys remains optional and uses the existing `CENSYS_TOKEN`; no mandatory API dependency was added.
 
-Only administrators can select **Active-light**. The target must also be registered under **Owned systems**, and
-the administrator must explicitly confirm ownership or authorization. Between one and four ports and a timeout of
+Only administrators can select **Active-light**, and they must explicitly confirm their authorization (own
+system, assignment, or court order). Between one and four ports and a timeout of
 2–20 seconds can be configured. Without explicit ports, WAY checks only `443` and `8443`. Ports `80` and `8080`
 use HTTP; every other explicitly approved port uses HTTPS. Repeat analysis preserves these settings. A passive
 analysis can later be enriched as a separate linked run through **Gain more intelligence**.
@@ -24,7 +24,7 @@ only for textual responses, with no more than four HTTP requests per port:
 
 WAY performs no login, sends no credentials, invokes no SOAP action, and performs no brute-force, exploit, CVE,
 or automatic port scan. Redirects are disabled. WAY's separately authorized Nmap scan remains independent and is
-restricted to registered owned systems. Nmap service detection is documented in the
+likewise available to administrators only. Nmap service detection is documented in the
 [Nmap reference](https://nmap.org/book/man-version-detection.html).
 
 ## Target binding and privacy

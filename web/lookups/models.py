@@ -1,8 +1,6 @@
 from django.conf import settings
 from django.db import models
 
-from .detect import HOSTNAME
-
 
 def default_active_ports():
     return [443, 8443]
@@ -102,60 +100,3 @@ class Lookup(models.Model):
     @property
     def is_running(self):
         return self.status in (self.Status.PENDING, self.Status.COLLECTING, self.Status.ANALYZING)
-
-
-class OwnedTarget(models.Model):
-    """Eigene Systeme: Nur für diese ist der Portscan erlaubt. Eintrag ist eine öffentliche
-    IP-Adresse, ein kleines Netz (höchstens /22 bzw. /56) oder ein Hostname."""
-
-    value = models.CharField(
-        "Adresse oder Hostname", max_length=255, unique=True,
-        help_text="z. B. 203.0.113.7, 203.0.113.0/24 oder meinserver.example.org. "
-                  "Hostnamen gelten nur exakt (keine Subdomains).",
-    )
-    asn = models.CharField(
-        "Erlaubte Netze (AS-Nummer)", max_length=100, blank=True,
-        help_text="Bei Hostnamen erforderlich, z. B. AS3320 (Telekom). Ein Name beweist nicht, wem die Adresse "
-                  "gehört, auf die er zeigt; gescannt wird nur, wenn alle seine Adressen in diesen Netzen liegen. "
-                  "Die AS-Nummer steht im ASN-Block einer Analyse.",
-    )
-    provider = models.CharField(
-        "Provider/Netzbetreiber", max_length=200, blank=True,
-        help_text="Nur dokumentarisch: aus der Analyse übernommener Provider oder Netzname. Die aktive Prüfung "
-                  "vergleicht technisch AS-Nummern, nicht diesen Freitext.",
-    )
-    dns_name = models.CharField(
-        "DNS-Name", max_length=255, blank=True,
-        help_text="Optionaler, ausdrücklich bestätigter Hostname für eine IP-Adresse. Bei aktiven IP-Prüfungen "
-                  "muss er weiterhin auf die geprüfte IP auflösen.",
-    )
-    note = models.CharField("Notiz", max_length=200, blank=True)
-    created_at = models.DateTimeField("eingetragen", auto_now_add=True)
-
-    class Meta:
-        ordering = ["value"]
-        verbose_name = "Eigenes System"
-        verbose_name_plural = "Eigene Systeme"
-
-    def __str__(self):
-        return self.value
-
-    def clean(self):
-        from django.core.exceptions import ValidationError
-
-        from .ownership import parse, parse_asns
-
-        kind, self.value = parse(self.value)
-        self.dns_name = self.dns_name.strip().lower().rstrip(".")
-        if self.dns_name and not HOSTNAME.fullmatch(self.dns_name):
-            raise ValidationError({"dns_name": "Bitte einen gültigen Hostnamen ohne URL angeben."})
-        if kind == "host" and self.dns_name:
-            raise ValidationError({"dns_name": "Für einen Hostname-Eintrag ist kein zusätzlicher DNS-Name nötig."})
-        asns = parse_asns(self.asn)
-        if kind == "host" and not asns:
-            raise ValidationError({"asn": "Für Hostnamen ist die AS-Nummer des Netzes erforderlich."})
-        self.asn = ", ".join(sorted(asns))
-
-    def save(self, *args, **kwargs):
-        self.clean()
-        super().save(*args, **kwargs)

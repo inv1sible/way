@@ -40,7 +40,6 @@ Browser ──HTTPS──> Reverse proxy ──> web ──> db
 - **`Lookup`:** query, type, status, risk, raw source data as a JSON list containing `source`, `ok`, and
   `data`/`error`, bilingual Markdown report, note, analysis options (`as_of`, `active_probe`, `active_ports`,
   `active_timeout`, `port_scan`), and owner.
-- **`OwnedTarget`:** addresses, networks, or hostnames and expected ASNs authorized for active checks.
 - **`accounts`:** invitations and email confirmation.
 
 Users can see only their own analyses; administrators can see all analyses. Historical comparison always uses

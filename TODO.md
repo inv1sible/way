@@ -65,11 +65,7 @@ contact with third-party targets.
 
 ## Features and operations
 
-- [ ] Add a cryptographic ownership challenge for hostnames through DNS TXT or a file instead of relying only on
-      origin-AS validation.
-- [ ] The `tools` container does not know the owned-system list. Anyone with its token can scan arbitrary public
-      targets. Consider signed per-scan authorization or validating a local allowlist in the container.
-- [ ] Extend port scanning to registered networks and optionally add further profiles for owned systems.
+- [ ] Anyone with the `tools` token can scan arbitrary public targets. Consider signed per-scan authorization.
 - [ ] Add two-factor authentication and consider per-username lockouts without enabling denial-of-service lockouts.
 - [ ] Back up PostgreSQL and `.env`.
 - [ ] Build an Android app only if caller identification while the phone rings is required; the PWA already covers

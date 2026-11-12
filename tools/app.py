@@ -7,9 +7,9 @@ Dienst nicht gegen interne Systeme missbraucht werden kann.
 
 Stufe 0 (nur Registries und DNS, kein Kontakt zum Ziel): whois, asn, dns
 Stufe 1 (ein normaler Zugriff auf das Ziel, taucht in dessen Log auf): tls, web
-Stufe 2 (Portscan, nur für eigene Systeme): scan
+Stufe 2 (Portscan, nur Admins mit bestätigter Berechtigung): scan
 
-Ob ein Ziel scannen darf, entscheidet die Anwendung anhand der Liste "Eigene Systeme"; dieser Dienst
+Ob ein Ziel scannen darf, entscheidet die Anwendung; dieser Dienst
 begrenzt nur das Wie: ausschließlich öffentliche Adressen, festes Profil, ein Scan zur Zeit.
 """
 
@@ -741,7 +741,7 @@ def tool_fritzbox(params):
     return tool_router(values)
 
 
-# --- Portscan (Stufe 2, nur eigene Systeme) --------------------------------------------------
+# --- Portscan (Stufe 2) -----------------------------------------------------------------------
 
 SCAN_SLOT = threading.BoundedSemaphore(1)
 SCAN_PROFILE = "Top-1000-TCP-Ports, Verbindungs-Scan (-sT), Diensterkennung leicht"

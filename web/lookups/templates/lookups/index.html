@@ -26,8 +26,8 @@
     <span class="muted">{% ui 'BGP- und Passive-DNS-Historie zum Datum, dazu der Verlauf deiner früheren Analysen' 'BGP and passive-DNS history for that date, plus your previous analyses' %}</span></label>
   {% if user.is_staff %}
   <label class="check opt"><input type="checkbox" name="active">
-    <span>{% ui 'Leicht aktiv: Ich bestätige, dass ich das Ziel besitze oder ausdrücklich prüfen darf' 'Active-light: I confirm that I own the target or have explicit authorization to test it' %}
-      <span class="muted">({% ui 'nur eingetragene eigene Systeme; FRITZ!Box-Fingerprint ohne Login; erscheint im Log des Ziels' 'registered owned systems only; FRITZ!Box fingerprint without sign-in; appears in the target log' %})</span></span></label>
+    <span>{% ui 'Leicht aktiv: Ich bin berechtigt (eigenes System, Auftrag oder Beschluss)' 'Active-light: I am authorized (own system, assignment or court order)' %}
+      <span class="muted">({% ui 'FRITZ!Box-Fingerprint ohne Login; erscheint im Log des Ziels' 'FRITZ!Box fingerprint without sign-in; appears in the target log' %})</span></span></label>
   <label class="opt-date">{% ui 'Freigegebene Web-Ports (optional)' 'Approved web ports (optional)' %}
     <input name="active_ports" inputmode="numeric" placeholder="443, 8443" maxlength="23">
     <span class="muted">{% ui 'höchstens 4; 80/8080 via HTTP, alle anderen via HTTPS' 'up to 4; 80/8080 via HTTP, all others via HTTPS' %}</span></label>
@@ -35,8 +35,8 @@
     <input name="active_timeout" type="number" min="2" max="20" placeholder="8">
     <span class="muted">{% ui '2–20 Sekunden; Standard 8' '2–20 seconds; default 8' %}</span></label>
   <label class="check opt"><input type="checkbox" name="scan">
-    <span>{% ui 'Portscan (nmap, Top-1000-Ports): nur für eigene Systeme' 'Port scan (nmap, top 1,000 ports): owned systems only' %}
-      <span class="muted">(<a href="{% url 'admin:lookups_ownedtarget_changelist' %}">{% ui 'Liste verwalten' 'Manage list' %}</a>)</span></span></label>
+    <span>{% ui 'Portscan (nmap, Top-1000-Ports): Ich bin berechtigt' 'Port scan (nmap, top 1,000 ports): I am authorized' %}
+      <span class="muted">({% ui 'erscheint im Log des Ziels' 'appears in the target log' %})</span></span></label>
   {% endif %}
   </div>
   </div>

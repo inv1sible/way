@@ -59,7 +59,7 @@
     <table>
       <tr><th>{% ui 'Typ' 'Type' %}</th><td>{{ member.kind|kind_label }}</td></tr>
       {% if member.as_of %}<tr><th>{% ui 'Stand (Rückblick)' 'Reference date' %}</th><td>{{ member.as_of|ui_date }}</td></tr>{% endif %}
-      <tr><th>{% ui 'Abfragestufe' 'Query mode' %}</th><td>{% if member.local_only %}{% ui 'nur lokal (keine Abfragen bei Drittanbietern)' 'local only (no third-party queries)' %}{% else %}{% ui 'passiv' 'passive' %}{% endif %}{% if member.active_probe %}, {% ui 'leicht aktiv' 'active-light' %}{% endif %}{% if member.port_scan %}, {% ui 'Portscan (eigenes System)' 'port scan (owned system)' %}{% endif %}</td></tr>
+      <tr><th>{% ui 'Abfragestufe' 'Query mode' %}</th><td>{% if member.local_only %}{% ui 'nur lokal (keine Abfragen bei Drittanbietern)' 'local only (no third-party queries)' %}{% else %}{% ui 'passiv' 'passive' %}{% endif %}{% if member.active_probe %}, {% ui 'leicht aktiv' 'active-light' %}{% endif %}{% if member.port_scan %}, {% ui 'Portscan (Berechtigung bestätigt)' 'port scan (authorization confirmed)' %}{% endif %}</td></tr>
       <tr><th>{% ui 'Analyse gestartet' 'Analysis started' %}</th><td>{{ member.created_at|ui_datetime }}</td></tr>
       <tr><th>{% ui 'Abgeschlossen' 'Completed' %}</th><td>{{ member.finished_at|ui_datetime }}</td></tr>
       {% if member.note %}<tr><th>{% ui 'Notiz' 'Note' %}</th><td>{{ member.note }}</td></tr>{% endif %}

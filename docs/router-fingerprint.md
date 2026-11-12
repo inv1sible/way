@@ -1,8 +1,8 @@
 # Router Fingerprint
 
 The detail page can enrich a completed passive analysis with a narrowly selected active profile. The plus icon is
-available only to administrators and only when the IP address or hostname is registered under **Owned systems**.
-Authorization must be confirmed again before starting. Every active run is stored separately and linked to its
+available only to administrators for IP addresses and hostnames. Authorization must be confirmed before every
+start. Every active run is stored separately and linked to its
 passive parent.
 
 ## Profiles

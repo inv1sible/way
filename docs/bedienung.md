@@ -13,12 +13,12 @@ applicable public web search option, also available when rerunning an analysis.
 - **Reference date (optional):** adds historical BGP data from RIPEstat, passive DNS from AlienVault OTX, and the
   user's own analysis closest to the selected date. Passive DNS is incomplete; only the provider can establish who
   used a dynamic address at a particular moment.
-- **Active-light** (administrators only, registered owned systems only): after explicit authorization confirmation,
+- **Active-light** (administrators only): after confirming authorization (own system, assignment, or court order),
   inspect TLS, web metadata, and the selected defensive router profile. Up to four web ports and a short timeout
   can be configured. See [FRITZ!Box Fingerprint](fritzbox-fingerprint.md) and
   [Router Fingerprint](router-fingerprint.md).
-- **Port scan** (administrators only): run Nmap against the top 1,000 ports, restricted to entries in
-  **Owned systems**. See [Security and operational security](sicherheit.md).
+- **Port scan** (administrators only, with confirmed authorization): run Nmap against the top 1,000 ports.
+  See [Security and operational security](sicherheit.md).
 - **Public web search (email and phone):** email uses one quoted query containing the complete address,
   without a result-language restriction, through the self-hosted SearXNG instance. Its raw source data records
   the requested query and the query echoed by SearXNG, and review results retain their originating engines.
@@ -53,21 +53,11 @@ One grouped entry includes every run of that query. Running analyses cannot be d
 - **FRITZ!Box Fingerprint:** negative and uncertain results remain technical raw sources. Only positive evidence is
   included as a report finding. Raw data includes target, authorization, services, TLS, observations, limitations,
   and warnings.
-- **Register owned system:** administrators can register an IP target or hostname from its detail page. WAY derives
-  suggested current DNS addresses, provider context, and ASNs from existing source data without making another
-  request. Target and ASN values remain editable, and saving requires authorization confirmation. Provider is
-  documentation; ASNs form a technical safety boundary. If an IP entry has expected ASNs, active enrichment is
-  blocked when the address no longer belongs to one of them. An IP entry can also store a confirmed DNS name;
-  reverse DNS is only a suggestion, and the name must continue to resolve to that exact IP before active access.
-- **Gain more intelligence:** available to administrators after a registered owned target finishes. It creates a
+- **Gain more intelligence:** available to administrators after an IP or hostname analysis finishes. It creates a
   separate linked run. **Generic router** retrieves only TLS plus headers and the title of `/` on each approved
   port. **FRITZ!Box** additionally requests only `/jason_boxinfo.xml`. **Speedport (experimental)** additionally
   requests only `/data/Status.json`. Profiles run sequentially, do not follow redirects, and never attempt login,
   exploits, or vulnerability probes.
-- **Dynamic connections:** register the exact controlled DynDNS or MyFRITZ! hostname instead of a temporary IP,
-  together with expected provider ASNs. Before every active check, WAY resolves all current addresses, validates
-  them against those ASNs, pins the selected address, and records the time-bound binding in raw data. ISP reverse
-  DNS is not proof of ownership.
 - **Raw data:** every source can be expanded and copied separately, with **Expand all / Collapse all** and **Copy all**
   for the complete source set.
 - **Web findings:** public links open in a new tab through your current Internet connection. Phone search results
