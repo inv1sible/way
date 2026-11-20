@@ -441,30 +441,22 @@ async def clever_dialer(client, e164):
     return {"url": url, **parse_clever_dialer(response.text)}
 
 
-async def collect(client, e164, active=False, scan=False, as_of=None, public_web=False):
+async def collect(client, e164, active=False, scan=False, as_of=None, public_web=True):
     async def searches():
         # Alle Teilrecherchen teilen ein Budget und laufen nacheinander: maximal drei Anfragen.
-        # Der Stammnummernabgleich sucht nur die Zentralnummer, nicht den Anschluss, und läuft deshalb immer;
-        # die Suche nach der vollständigen Nummer und die Spam-Portale nur bei gesetztem Häkchen.
         budget = SearchBudget()
-        direct = await run_source("Websuche (SearXNG)", web_search, client, e164, budget) if public_web else None
-        direct_hits = (direct.get("data") or {}).get("treffer", []) if direct and direct.get("ok") else []
+        direct = await run_source("Websuche (SearXNG)", web_search, client, e164, budget)
+        direct_hits = (direct.get("data") or {}).get("treffer", []) if direct.get("ok") else []
         central = await run_source("Stammnummernabgleich (Websuche)", central_office_search,
                                    client, e164, budget, direct_hits)
-        portals = await run_source("Spam-Portale und Telefonbücher (Websuche)", spam_portals, client, e164, budget) \
-            if public_web else None
+        portals = await run_source("Spam-Portale und Telefonbücher (Websuche)", spam_portals, client, e164, budget)
         attribution = await run_source(
             "Stammnummern-Zuordnung", stem_attribution, e164, direct_hits,
             central.get("data") if central.get("ok") else {},
         )
-        if not public_web:
-            return [central, attribution, {
-                "source": "Öffentliche Rufnummernrecherche (SearXNG)", "ok": True,
-                "data": {"ausgefuehrt": False, "hinweis": "Nicht ausgewählt: Die vollständige Nummer wurde nicht im "
-                         "Web gesucht; der Stammnummernabgleich lief trotzdem."},
-            }]
         return [direct, central, attribution, portals]
 
+    # Die öffentliche Websuche läuft bei Rufnummern immer; public_web bleibt nur für die Aufrufsignatur.
     direct = await asyncio.gather(
         run_source("Rufnummernanalyse (libphonenumber)", analyze, e164),
         run_source("Bundesnetzagentur-Maßnahmenliste", bnetza.check, client, e164),

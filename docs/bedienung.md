@@ -7,8 +7,8 @@ country code use `DEFAULT_REGION`. URLs are accepted and reduced to their hostna
 `https://example.org/path` becomes `example.org`.
 
 Network-specific options remain hidden for phone numbers. They appear only after the input contains a period, as
-used by IPv4 addresses and hostnames, or a colon for IPv6. Phone numbers and email addresses each offer their
-applicable public web search option, also available when rerunning an analysis.
+used by IPv4 addresses and hostnames, or a colon for IPv6. Email addresses offer an optional public web search, also available when rerunning an analysis. Phone numbers
+are always searched on the web.
 
 - **Reference date (optional):** adds historical BGP data from RIPEstat, passive DNS from AlienVault OTX, and the
   user's own analysis closest to the selected date. Passive DNS is incomplete; only the provider can establish who
@@ -27,8 +27,8 @@ applicable public web search option, also available when rerunning an analysis.
   to end on January 1, 2027. Its phrase parameter does not independently verify the contents of a page.
   The existing web-findings panel also offers direct searches in Google (Verbatim), Bing and DuckDuckGo,
   useful when server-side searches are blocked. Public websites are not excluded by domain category.
-  Phone uses at most three format-aware searches. The trunk-number check (central number without the
-  extension) always runs, even without this option; only the complete number requires it. WAY stores search-result metadata without fetching result pages.
+  Phone always uses at most three format-aware searches: the complete number, the trunk number without the
+  extension, and spam portals. WAY stores search-result metadata without fetching result pages.
 
 Select **Analyze** to create the analysis and open its detail page.
 

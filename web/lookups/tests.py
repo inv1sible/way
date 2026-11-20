@@ -615,16 +615,14 @@ class ViewTests(TestCase):
         page = self.client.get(reverse("lookups:detail", args=[lookup.pk]))
         self.assertContains(page, 'id="rerun-pop"', html=False)
         self.assertContains(page, "Rufnummer erneut analysieren")
-        self.assertContains(page, 'name="phone_public_web"', html=False)
+        self.assertNotContains(page, 'name="phone_public_web"', html=False)
         self.assertNotContains(page, 'name="phone_authorized"', html=False)
         self.assertNotContains(page, 'name="active"', html=False)
 
-    def test_phone_public_web_is_stored_without_authorization_checkbox(self):
+    def test_phone_public_web_always_runs_without_checkbox(self):
         self.client.force_login(self.user)
         with mock.patch("lookups.views.run_lookup.delay"), self.captureOnCommitCallbacks(execute=True):
-            self.client.post(reverse("lookups:index"), {
-                "q": "030 1234567", "phone_public_web": "on",
-            })
+            self.client.post(reverse("lookups:index"), {"q": "030 1234567"})
         self.assertTrue(Lookup.objects.latest("pk").phone_public_web)
 
     def test_invalid_input_shows_error(self):
@@ -889,7 +887,7 @@ class WebSearchTests(SimpleTestCase):
         self.assertEqual((budget.used, len(queries)), (3, 3))
         self.assertEqual(queries[1], "0301234567")
 
-    def test_stem_search_runs_without_public_web_but_not_the_full_number(self):
+    def test_phone_collect_always_runs_the_web_search(self):
         queries = []
 
         async def fake_searx(client, query, limit=10, pageno=1, meta=None):
@@ -899,14 +897,12 @@ class WebSearchTests(SimpleTestCase):
         with mock.patch.object(phone.search, "searx", fake_searx), mock.patch.object(phone, "SEARCH_PAUSE", 0), \
                 mock.patch.object(phone.bnetza, "check", mock.AsyncMock(return_value={})), \
                 mock.patch.object(phone, "clever_dialer", mock.AsyncMock(return_value={})):
-            results = asyncio.run(phone.collect(None, "+4921112345678"))
+            results = asyncio.run(phone.collect(None, "+4921112345678", public_web=False))
         names = [item["source"] for item in results]
-        self.assertIn("Stammnummernabgleich (Websuche)", names)
-        self.assertNotIn("Websuche (SearXNG)", names)
-        self.assertNotIn("Spam-Portale und Telefonbücher (Websuche)", names)
-        self.assertEqual(len(queries), 1)
-        self.assertIn('"0211 1234"', queries[0])
-        self.assertNotIn("12345678", queries[0])
+        for name in ("Websuche (SearXNG)", "Stammnummernabgleich (Websuche)", "Spam-Portale und Telefonbücher (Websuche)"):
+            self.assertIn(name, names)
+        self.assertNotIn("Öffentliche Rufnummernrecherche (SearXNG)", names)
+        self.assertEqual(len(queries), 3)
 
     def test_parse_clever_dialer(self):
         page = ("<title>06990009123 &#9989; Infos zur Telefonnummer aus Frankfurt am Main</title><body>"

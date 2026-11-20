@@ -50,7 +50,7 @@ def _create(request, kind, query, active=False, active_ports=None, active_timeou
         active_ports=active_ports or fritzbox.DEFAULT_PORTS, active_timeout=active_timeout,
         active_profile=active_profile or Lookup.ActiveProfile.FRITZBOX, enrichment_of=enrichment_of,
         as_of=as_of, note=note or "", email_public_web=bool(kind == "email" and email_public_web),
-        phone_public_web=bool(kind == "phone" and phone_public_web),
+        phone_public_web=kind == "phone",  # Websuche läuft bei Rufnummern immer
         local_only=bool(kind == "ip" and local_only and not active and not scan),
     )
     transaction.on_commit(lambda: run_lookup.delay(lookup.pk))
