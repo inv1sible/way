@@ -330,12 +330,6 @@ async def central_office_search(client, e164, budget=None, direct_hits=()):
     if not candidates:
         return {"treffer": [], "evidenz": [],
                 "hinweis": "Kein Stammnummernabgleich: keine geeignete deutsche Festnetznummer mit plausibler Durchwahllänge."}
-    full_digits = _formats(e164)[2]
-    if any(_contact_page_signal(hit) and any(number["ziffern"] == full_digits for number in _published_numbers(hit))
-           for hit in direct_hits):
-        return {"treffer": [], "evidenz": [],
-                "hinweis": "Nicht abgefragt: die vollständige Nummer ist bereits auf einer Kontakt-/Impressumsseite belegt.",
-                **_coverage(meta), **({"abfragebudget": budget.state()} if budget else {})}
     quoted = " OR ".join(f'"{candidate["stammnummer"]}"' for candidate in candidates)
     query = f"({quoted}) (Kontakt OR Impressum OR Telefon OR Zentrale)"
     try:
