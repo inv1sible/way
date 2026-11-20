@@ -27,7 +27,8 @@ applicable public web search option, also available when rerunning an analysis.
   to end on January 1, 2027. Its phrase parameter does not independently verify the contents of a page.
   The existing web-findings panel also offers direct searches in Google (Verbatim), Bing and DuckDuckGo,
   useful when server-side searches are blocked. Public websites are not excluded by domain category.
-  Phone uses at most three format-aware searches. WAY stores search-result metadata without fetching result pages.
+  Phone uses at most three format-aware searches. The trunk-number check (central number without the
+  extension) always runs, even without this option; only the complete number requires it. WAY stores search-result metadata without fetching result pages.
 
 Select **Analyze** to create the analysis and open its detail page.
 

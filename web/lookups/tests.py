@@ -889,6 +889,25 @@ class WebSearchTests(SimpleTestCase):
         self.assertEqual((budget.used, len(queries)), (3, 3))
         self.assertEqual(queries[1], "0301234567")
 
+    def test_stem_search_runs_without_public_web_but_not_the_full_number(self):
+        queries = []
+
+        async def fake_searx(client, query, limit=10, pageno=1, meta=None):
+            queries.append(query)
+            return []
+
+        with mock.patch.object(phone.search, "searx", fake_searx), mock.patch.object(phone, "SEARCH_PAUSE", 0), \
+                mock.patch.object(phone.bnetza, "check", mock.AsyncMock(return_value={})), \
+                mock.patch.object(phone, "clever_dialer", mock.AsyncMock(return_value={})):
+            results = asyncio.run(phone.collect(None, "+4921112345678"))
+        names = [item["source"] for item in results]
+        self.assertIn("Stammnummernabgleich (Websuche)", names)
+        self.assertNotIn("Websuche (SearXNG)", names)
+        self.assertNotIn("Spam-Portale und Telefonbücher (Websuche)", names)
+        self.assertEqual(len(queries), 1)
+        self.assertIn('"0211 1234"', queries[0])
+        self.assertNotIn("12345678", queries[0])
+
     def test_parse_clever_dialer(self):
         page = ("<title>06990009123 &#9989; Infos zur Telefonnummer aus Frankfurt am Main</title><body>"
                 "<div>3,5 von 5 Sternen &bull; 12 Bewertungen</div><p>Anrufe letzte 30 Tage: 40</p>"

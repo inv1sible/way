@@ -66,9 +66,9 @@
     {% endif %}
     {% else %}
     <label><strong>{% ui 'Rufnummer erneut analysieren' 'Run phone-number analysis again' %}</strong></label>
-    <p class="muted note-tip">{% ui 'Passive Quellen laufen immer. Die öffentliche Web-Recherche ist begrenzt.' 'Passive sources always run. The public web search is bounded.' %}</p>
+    <p class="muted note-tip">{% ui 'Passive Quellen und der Stammnummernabgleich laufen immer. Die Suche nach der vollständigen Nummer ist begrenzt.' 'Passive sources and the trunk-number check always run. The search for the complete number is bounded.' %}</p>
     <label class="check"><input type="checkbox" name="phone_public_web" value="on"{% if lookup.phone_public_web %} checked{% endif %}>
-      <span>{% ui 'Öffentliche Web-Recherche starten' 'Run public web search' %}</span></label>
+      <span>{% ui 'Vollständige Nummer im öffentlichen Web suchen' 'Search the public web for the complete number' %}</span></label>
     {% endif %}
     <button class="small">{% ui 'Analyse starten' 'Start analysis' %}</button>
   </form>
