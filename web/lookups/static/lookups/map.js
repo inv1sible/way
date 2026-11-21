@@ -8,6 +8,8 @@
     const map = L.map(el, { scrollWheelZoom: false });
     L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
       maxZoom: 18,
+      // OSM verlangt einen Referer; die Seite sendet sonst keinen (same-origin). Nur die Domain, kein Pfad.
+      referrerPolicy: "strict-origin-when-cross-origin",
       attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
     }).addTo(map);
     // Ausschnitt vorab aus den Koordinaten: circle.getBounds() setzt eine Karte mit Ausschnitt voraus.
